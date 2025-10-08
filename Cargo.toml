@@ -1,6 +1,46 @@
+[workspace]
+members = ["akon-core"]
+resolver = "2"
+
 [package]
 name = "akon"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[[bin]]
+name = "akon"
+path = "src/main.rs"
 
 [dependencies]
+# Workspace dependencies
+clap.workspace = true
+tracing.workspace = true
+tracing-journald.workspace = true
+# Local crate
+akon-core = { path = "akon-core" }
+
+[workspace.dependencies]
+# Core dependencies shared across crates
+secrecy = "0.8"
+thiserror = "1.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+# CLI and logging
+clap = { version = "4.0", features = ["derive"] }
+tracing = "0.1"
+tracing-journald = "0.3"
+tracing-subscriber = "0.3"
+tokio = { version = "1.0", features = ["full"] }
+
+# Security and crypto
+totp-lite = "2.0"
+base32 = "0.4"
+keyring = { version = "3.6", features = ["sync-secret-service"] }
+
+# Build and FFI
+bindgen = "0.69"
+
+# Dev dependencies
+cargo-tarpaulin = "0.27"
