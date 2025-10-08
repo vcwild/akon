@@ -136,6 +136,14 @@ FOLLOW-UP TODOS: None
 - Inline docstrings MUST explain security-relevant design decisions (why keyring, not files).
 - Configuration schema MUST be documented in README with example TOML.
 
+### Visual Documentation
+
+- **All diagrams and flowcharts MUST use Mermaid syntax** for maintainability and version control.
+- Architecture diagrams, state machines, sequence diagrams, and process flows MUST be embedded in Markdown as Mermaid code blocks.
+- ASCII art diagrams are NOT permitted and existing ones MUST be converted to Mermaid.
+- Mermaid diagrams MUST be rendered inline in documentation tools (GitHub, GitLab, VS Code preview).
+- **Rationale**: Mermaid enables text-based diagrams that are diff-friendly, version-controlled, and automatically rendered without external tools.
+
 ## Governance
 
 This constitution supersedes all other development practices and guides. Amendments require:
