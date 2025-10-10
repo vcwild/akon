@@ -47,7 +47,7 @@ pub fn run_setup() -> Result<(), AkonError> {
     // Validate OTP secret
     otp_secret
         .validate_base32()
-        .map_err(|e| AkonError::Otp(e))?;
+        .map_err(AkonError::Otp)?;
 
     // Save configuration
     println!();
