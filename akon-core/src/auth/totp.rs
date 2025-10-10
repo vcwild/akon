@@ -1,75 +1,70 @@
 //! TOTP (Time-based One-Time Password) generation
 //!
-//! Implements RFC 6238 TOTP using the totp-lite crate for secure
-//! OTP token generation from stored secrets.
+//! Implements RFC 6238 TOTP with custom HMAC-SHA1 and Base32 decoding
+//! to match auto-openconnect's algorithm exactly for cross-compatibility.
 
-use crate::error::{AkonError, OtpError};
-use crate::types::TotpToken;
-use base32::Alphabet;
-use totp_lite::{Sha1, Sha256, Sha512};
+use crate::auth::{base32, hmac};
+use crate::error::AkonError;
+use crate::types::{OtpSecret, TotpToken};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Hash algorithm for TOTP
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HashAlgorithm {
-    Sha1,
-    Sha256,
-    Sha512,
+/// Get HOTP counter from timestamp
+///
+/// Matches auto-openconnect's logic: `int(time.time() / 30)`
+/// Uses integer division to match Python's behavior
+fn get_hotp_counter(timestamp: Option<u64>) -> Result<u64, AkonError> {
+    let ts = timestamp.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("System time before Unix epoch")
+            .as_secs()
+    });
+
+    Ok(ts / 30) // Integer division, matching Python
 }
 
-impl Default for HashAlgorithm {
-    fn default() -> Self {
-        Self::Sha1
-    }
+/// Generate OTP token from secret, matching auto-openconnect's algorithm
+///
+/// This function implements the exact same logic as auto-openconnect's
+/// `lib.py::generate_otp()` function:
+/// 1. Calculate HOTP counter from timestamp
+/// 2. Decode Base32 secret (with custom padding and whitespace handling)
+/// 3. Compute HMAC-SHA1
+/// 4. Apply dynamic truncation (RFC 6238)
+/// 5. Return 6-digit OTP
+pub fn generate_otp(secret: &OtpSecret, timestamp: Option<u64>) -> Result<TotpToken, AkonError> {
+    // Step 1: Get HOTP counter (timestamp / 30)
+    let counter = get_hotp_counter(timestamp)?;
+
+    // Step 2: Decode Base32 secret with custom logic
+    let key_bytes = base32::decode_base32(secret.expose())
+        .map_err(|e| AkonError::Otp(e))?;
+
+    // Step 3: Convert counter to big-endian bytes
+    let counter_bytes = counter.to_be_bytes();
+
+    // Step 4: Compute HMAC-SHA1
+    let hmac_result = hmac::hmac_sha1(&key_bytes, &counter_bytes);
+
+    // Step 5: Dynamic truncation (RFC 6238)
+    let offset = (hmac_result[19] & 0x0f) as usize;
+    let code = u32::from_be_bytes([
+        hmac_result[offset],
+        hmac_result[offset + 1],
+        hmac_result[offset + 2],
+        hmac_result[offset + 3],
+    ]);
+
+    // Step 6: Generate 6-digit OTP
+    let otp = (code & 0x7fffffff) % 1_000_000;
+
+    Ok(TotpToken::new(format!("{:06}", otp)))
 }
 
-/// Generate a TOTP token from a Base32-encoded secret
-pub fn generate_totp(
-    secret: &str,
-    algorithm: HashAlgorithm,
-    digits: u32,
-) -> Result<TotpToken, AkonError> {
-    // Validate the secret is valid Base32
-    if !is_valid_base32(secret) {
-        return Err(AkonError::Otp(OtpError::InvalidBase32));
-    }
-
-    // Decode Base32 secret to bytes
-    let secret_bytes = base32::decode(Alphabet::RFC4648 { padding: false }, secret)
-        .ok_or(AkonError::Otp(OtpError::InvalidBase32))?;
-
-    let time_step = 30; // RFC 6238 default
-
-    // Get current time in seconds since Unix epoch
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let current_time = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| AkonError::Otp(OtpError::TimeError))?
-        .as_secs();
-
-    let token = match algorithm {
-        HashAlgorithm::Sha1 => {
-            totp_lite::totp_custom::<Sha1>(time_step, digits, &secret_bytes, current_time)
-        }
-        HashAlgorithm::Sha256 => {
-            totp_lite::totp_custom::<Sha256>(time_step, digits, &secret_bytes, current_time)
-        }
-        HashAlgorithm::Sha512 => {
-            totp_lite::totp_custom::<Sha512>(time_step, digits, &secret_bytes, current_time)
-        }
-    };
-
-    Ok(TotpToken::new(token))
-}
-
-/// Generate a TOTP token with default settings (SHA1, 6 digits)
+/// Generate a TOTP token with default settings (for backward compatibility)
 pub fn generate_totp_default(secret: &str) -> Result<TotpToken, AkonError> {
-    generate_totp(secret, HashAlgorithm::Sha1, 6)
-}
-
-/// Validate that a string contains only valid Base32 characters
-fn is_valid_base32(s: &str) -> bool {
-    s.chars()
-        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '=')
+    let otp_secret = OtpSecret::new(secret.to_string());
+    generate_otp(&otp_secret, None)
 }
 
 #[cfg(test)]
@@ -91,31 +86,50 @@ mod tests {
 
     #[test]
     fn test_invalid_base32() {
-        let invalid_secrets = vec![
-            "INVALID!",
-            "lowercase",
-            "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ!", // Contains exclamation
-        ];
-
-        for secret in invalid_secrets {
-            let result = generate_totp_default(secret);
-            assert!(matches!(
-                result,
-                Err(AkonError::Otp(OtpError::InvalidBase32))
-            ));
-        }
+        let otp_secret = OtpSecret::new("INVALID!@#$".to_string());
+        let result = generate_otp(&otp_secret, None);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_valid_base32() {
-        let valid_secrets = vec![
-            "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
-            "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ=", // With padding
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",  // All valid chars
-        ];
+    fn test_generate_otp_fixed_timestamp() {
+        // Test with fixed timestamp for reproducibility
+        let otp_secret = OtpSecret::new("JBSWY3DPEHPK3PXP".to_string());
+        let timestamp = 1609459200; // 2021-01-01 00:00:00 UTC
 
-        for secret in valid_secrets {
-            assert!(is_valid_base32(secret));
-        }
+        let result = generate_otp(&otp_secret, Some(timestamp));
+        assert!(result.is_ok());
+
+        let token = result.unwrap();
+        assert_eq!(token.expose().len(), 6);
+        assert!(token.expose().chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_hotp_counter_calculation() {
+        // Test that counter calculation matches Python's int(time / 30)
+        let result = get_hotp_counter(Some(1609459200));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1609459200 / 30);
+
+        // Test with different timestamps
+        assert_eq!(get_hotp_counter(Some(0)).unwrap(), 0);
+        assert_eq!(get_hotp_counter(Some(30)).unwrap(), 1);
+        assert_eq!(get_hotp_counter(Some(60)).unwrap(), 2);
+        assert_eq!(get_hotp_counter(Some(89)).unwrap(), 2);
+        assert_eq!(get_hotp_counter(Some(90)).unwrap(), 3);
+    }
+
+    #[test]
+    fn test_generate_otp_format() {
+        let otp_secret = OtpSecret::new("JBSWY3DPEHPK3PXP".to_string());
+        let result = generate_otp(&otp_secret, None);
+
+        assert!(result.is_ok());
+        let token = result.unwrap();
+
+        // Verify format: exactly 6 digits
+        assert_eq!(token.expose().len(), 6);
+        assert!(token.expose().chars().all(|c| c.is_ascii_digit()));
     }
 }

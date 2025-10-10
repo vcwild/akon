@@ -9,7 +9,7 @@
 
 ### User Story 1 - First-Time Setup with Secure Credential Storage (Priority: P1)
 
-A new user installs the CLI tool and needs to configure their VPN credentials securely. The tool guides them through storing their VPN server details, username, and OTP secret key in GNOME Keyring without ever exposing sensitive data in plaintext.
+A new user installs the CLI tool and needs to configure their VPN credentials securely. The tool guides them through storing their VPN server details, username, 4-digit PIN, and OTP secret key in GNOME Keyring without ever exposing sensitive data in plaintext.
 
 **Why this priority**: This is the foundation for all other functionality. Without secure credential storage, the tool cannot operate according to security principles. This delivers immediate value by ensuring user trust from first interaction.
 
@@ -17,11 +17,12 @@ A new user installs the CLI tool and needs to configure their VPN credentials se
 
 **Acceptance Scenarios**:
 
-1. **Given** a user runs the CLI for the first time, **When** they execute the setup command, **Then** the system prompts for VPN server URL, username, protocol, and OTP secret key
-2. **Given** the user provides valid credentials during setup, **When** the setup completes, **Then** all sensitive data (OTP secret, password if provided) is stored exclusively in GNOME Keyring with appropriate service names
-3. **Given** the user provides an invalid OTP secret format, **When** setup validates the input, **Then** the system displays a clear error message explaining the expected format (Base32-encoded string) and prompts for re-entry
-4. **Given** GNOME Keyring is not available on the system, **When** the user attempts setup, **Then** the system fails gracefully with a descriptive error message and instructions for installing the required keyring backend
-5. **Given** setup completes successfully, **When** the user inspects the config file (`~/.config/akon/config.toml`), **Then** only non-sensitive data (VPN server, username, protocol) is present—no secrets
+1. **Given** a user runs the CLI for the first time, **When** they execute the setup command, **Then** the system prompts for VPN server URL, username, protocol, 4-digit PIN, and OTP secret key
+2. **Given** the user provides valid credentials during setup, **When** the setup completes, **Then** all sensitive data (PIN, OTP secret, password if provided) is stored exclusively in GNOME Keyring with appropriate service names
+3. **Given** the user provides an invalid PIN format, **When** setup validates the input, **Then** the system displays a clear error message explaining the expected format (exactly 4 numeric digits) and prompts for re-entry
+4. **Given** the user provides an invalid OTP secret format, **When** setup validates the input, **Then** the system displays a clear error message explaining the expected format (Base32-encoded string) and prompts for re-entry
+5. **Given** GNOME Keyring is not available on the system, **When** the user attempts setup, **Then** the system fails gracefully with a descriptive error message and instructions for installing the required keyring backend
+6. **Given** setup completes successfully, **When** the user inspects the config file (`~/.config/akon/config.toml`), **Then** only non-sensitive data (VPN server, username, protocol) is present—no secrets (PIN and OTP secret are in keyring only)
 
 ---
 
@@ -44,20 +45,21 @@ A configured user wants to connect to their VPN using the stored credentials. Th
 
 ---
 
-### User Story 3 - Manual OTP Generation for External Use (Priority: P2)
+### User Story 3 - Manual Password Generation for External Use (Priority: P2)
 
-A user needs to generate an OTP token for use outside the CLI (e.g., manual browser login, troubleshooting, or integration with other tools). The tool provides a standalone command that outputs only the token value to stdout for easy piping.
+A user needs to generate the complete VPN password (PIN + OTP) for use outside the CLI (e.g., manual browser login, troubleshooting, or integration with other tools). The tool provides a standalone command that outputs only the complete password to stdout for easy piping.
 
-**Why this priority**: While not required for automated VPN connection, this enables debugging workflows and flexible integration with other tools. Supports the CLI-first principle by making functionality composable.
+**Why this priority**: While not required for automated VPN connection, this enables debugging workflows and flexible integration with other tools. Supports the CLI-first principle by making functionality composable. Must match the exact password format used by auto-openconnect for compatibility.
 
-**Independent Test**: Can be tested by running the get-password command after setup and verifying: (1) only the OTP token is printed to stdout, (2) any errors go to stderr, (3) the token is valid for TOTP authentication, (4) exit codes are correct.
+**Independent Test**: Can be tested by running the get-password command after setup and verifying: (1) only the complete password (PIN + OTP, 10 characters) is printed to stdout, (2) any errors go to stderr, (3) the password is valid for VPN authentication, (4) exit codes are correct, (5) password format matches auto-openconnect output.
 
 **Acceptance Scenarios**:
 
-1. **Given** the user has stored OTP credentials, **When** they execute the get-password command, **Then** the system outputs only the current TOTP token to stdout (6-8 digits) with no additional text
-2. **Given** the get-password command succeeds, **When** the output is piped to another command, **Then** only the token value is passed (enabling `akon get-password | pbcopy` or similar)
-3. **Given** the OTP secret is missing from GNOME Keyring, **When** the user runs get-password, **Then** an error message is written to stderr (not stdout) and the command exits with code 1
-4. **Given** the generated token is used within its validity window (typically 30 seconds), **When** the token is submitted to the VPN server manually, **Then** it successfully authenticates
+1. **Given** the user has stored PIN and OTP credentials, **When** they execute the get-password command, **Then** the system outputs only the current complete password (4-digit PIN + 6-digit TOTP = 10 characters) to stdout with no additional text
+2. **Given** the get-password command succeeds, **When** the output is piped to another command, **Then** only the complete password value is passed (enabling `akon get-password | pbcopy` or similar)
+3. **Given** the PIN or OTP secret is missing from GNOME Keyring, **When** the user runs get-password, **Then** an error message is written to stderr (not stdout) and the command exits with code 1
+4. **Given** the generated password is used within its validity window (typically 30 seconds), **When** the password is submitted to the VPN server manually, **Then** it successfully authenticates
+5. **Given** both akon and auto-openconnect are configured with the same PIN and OTP secret, **When** get-password is executed within the same 30-second TOTP window, **Then** both implementations produce identical 10-character passwords
 
 ---
 
@@ -130,20 +132,23 @@ A user wants their VPN to automatically reconnect after network disruptions, sys
 
 ### Functional Requirements
 
-- **FR-001**: System MUST provide a first-time setup command that collects VPN server URL, username, protocol (ssl/nc), and OTP secret key through secure prompts (no command-line arguments for secrets); if credentials already exist, system MUST detect them and prompt "Overwrite existing setup? (y/N)" before proceeding
-- **FR-002**: System MUST store all sensitive data (OTP secret key, passwords, PINs) exclusively in GNOME Keyring using appropriate service identifiers (e.g., `akon-vpn-otp`, `akon-vpn-password`); credentials MUST NOT be exportable—users must run setup again on new systems to maintain security
+- **FR-001**: System MUST provide a first-time setup command that collects VPN server URL, username, protocol (ssl/nc), 4-digit PIN, and OTP secret key through secure prompts (no command-line arguments for secrets); if credentials already exist, system MUST detect them and prompt "Overwrite existing setup? (y/N)" before proceeding
+- **FR-002**: System MUST store all sensitive data (PIN, OTP secret key, passwords) exclusively in GNOME Keyring using appropriate service identifiers (e.g., `akon-vpn-pin`, `akon-vpn-otp`); credentials MUST NOT be exportable—users must run setup again on new systems to maintain security
 - **FR-003**: System MUST store non-sensitive configuration (VPN server, username, protocol) in a TOML file at `~/.config/akon/config.toml` with clear separation from secrets; MVP supports single profile only (one config file, one set of credentials), multi-profile support deferred to future iterations
-- **FR-004**: System MUST generate TOTP tokens using cryptographically secure algorithms (HMAC-SHA1 or HMAC-SHA256) with standard 30-second time steps
-- **FR-005**: System MUST validate OTP secret key format during setup (Base32-encoded string, typically 16-32 characters)
+- **FR-004**: System MUST generate TOTP tokens using **the exact same algorithm as auto-openconnect** (custom HMAC-SHA1 implementation following RFC 6238 and RFC 2104) with standard 30-second time steps to ensure cross-compatibility; tokens MUST match those generated by auto-openconnect's `lib.py::generate_otp()` function for the same secret and time window
+- **FR-004a**: System MUST implement custom Base32 decoding logic that matches auto-openconnect's behavior: (1) remove all whitespace characters from input, (2) apply padding to 8-character boundaries using `=` characters following the formula: `padding_length = (8 - (len(input) % 8)) % 8`
+- **FR-004b**: System MUST implement HOTP counter calculation as `current_unix_timestamp / 30` (integer division) to match Python's behavior exactly
+- **FR-004c**: System MUST implement custom HMAC-SHA1 following RFC 2104 with 64-byte block size, matching auto-openconnect's implementation (ipad=0x36, opad=0x5C, SHA1 hash function)
+- **FR-005**: System MUST validate 4-digit PIN format during setup (exactly 4 numeric characters, no letters or special characters); System MUST validate OTP secret key format during setup (Base32-encoded string, typically 16-32 characters)
 - **FR-006**: System MUST communicate with OpenConnect through Rust FFI bindings to libopenconnect C library in-process, not by spawning shell commands or external processes
-- **FR-007**: System MUST pass generated OTP tokens to OpenConnect via secure in-memory channels using FFI callbacks, wrapped in `secrecy::Secret<T>` to prevent accidental exposure
+- **FR-007**: System MUST pass complete passwords (PIN + OTP) to OpenConnect via secure in-memory channels using FFI callbacks, wrapped in `secrecy::Secret<T>` to prevent accidental exposure; password format MUST be exactly: 4-digit PIN concatenated with 6-digit OTP (10 characters total)
 - **FR-008**: System MUST provide clear connection feedback with three states: connecting, connected (with connection details), failed (with error category)
 - **FR-009**: System MUST distinguish between authentication failures, network errors, and configuration errors in user-facing messages using structured error types (`thiserror` for library errors, `anyhow` with context for application errors)
 - **FR-010**: System MUST return appropriate exit codes: 0 for success, 1 for authentication/network failures, 2 for configuration errors
-- **FR-011**: System MUST provide a `get-password` command that outputs only the current TOTP token to stdout (machine-parsable), with errors to stderr
+- **FR-011**: System MUST provide a `get-password` command that outputs only the current complete password (4-digit PIN + 6-digit TOTP = 10 characters) to stdout (machine-parsable), with errors to stderr; output format MUST match auto-openconnect's `get-password` command exactly for cross-compatibility
 - **FR-012**: System MUST provide VPN state management commands: `on` (connect—spawns background daemon, blocks until connection established or fails, then returns terminal control), `off` (disconnect), `status` (report state)
 - **FR-013**: System MUST gracefully handle missing GNOME Keyring backend with actionable error messages and setup instructions
-- **FR-014**: System MUST prevent credential leakage in logs by sanitizing all logging output (never log OTP tokens, passwords, or secret keys); all sensitive values MUST be wrapped in `secrecy::Secret<T>` which prevents accidental Debug/Display formatting
+- **FR-014**: System MUST prevent credential leakage in logs by sanitizing all logging output (never log PINs, OTP tokens, passwords, or secret keys); all sensitive values MUST be wrapped in `secrecy::Secret<T>` which prevents accidental Debug/Display formatting
 - **FR-015**: System MUST log security-relevant events to systemd journal (keyring access, OTP generation requests, connection attempts, authentication results)
 - **FR-016**: System MUST validate that GNOME Keyring is accessible before attempting credential operations
 - **FR-017**: System MUST support `--config` flag to override default config file location for scripting and testing
@@ -157,7 +162,9 @@ A user wants their VPN to automatically reconnect after network disruptions, sys
 ### Key Entities
 
 - **VPN Configuration**: Represents the non-sensitive connection parameters (server URL, username, protocol, optional port). Stored in TOML format with clear schema. Validated on load for required fields and format. Rust struct with `serde` derives for deserialization.
-- **OTP Secret**: The Base32-encoded seed used for TOTP generation. Stored exclusively in GNOME Keyring with service name `akon-vpn-otp`. In-memory representation wrapped in `secrecy::Secret<String>` to prevent accidental exposure. Never transmitted or logged. Validated for format and length during setup.
+- **PIN**: A 4-digit numeric code used as the first part of VPN authentication. Stored exclusively in GNOME Keyring with service name `akon-vpn-pin`. In-memory representation wrapped in `secrecy::Secret<String>`. Combined with OTP to form the complete password (PIN + OTP = 10 characters). Validated during setup to be exactly 4 digits.
+- **OTP Secret**: The Base32-encoded seed used for TOTP generation. Stored exclusively in GNOME Keyring with service name `akon-vpn-otp`. In-memory representation wrapped in `secrecy::Secret<String>` to prevent accidental exposure. Never transmitted or logged. Validated for format and length during setup. **Must use algorithm compatible with auto-openconnect's lib.py implementation.**
+- **Complete Password**: The concatenation of PIN + OTP (10 characters total: 4-digit PIN + 6-digit OTP). Generated on-demand by retrieving PIN from keyring and generating TOTP token. Passed to OpenConnect for authentication. Wrapped in `secrecy::Secret<String>`. Never stored, only computed when needed. Format MUST match auto-openconnect exactly.
 - **Connection State**: Represents the current VPN connection status (disconnected, connecting, connected, error). Includes metadata like connection start time, server endpoint, and last error. Observable through status command and monitoring service. Shared between main thread and monitoring thread via `Arc<Mutex<ConnectionState>>`.
 - **Keyring Entry**: A secure credential stored in GNOME Keyring. Includes service name, username (account identifier), and secret value. Accessed only through the keyring API, never directly read or written to disk.
 
@@ -194,14 +201,14 @@ A user wants their VPN to automatically reconnect after network disruptions, sys
 
 ### Measurable Outcomes
 
-- **SC-001**: Users can complete first-time setup (credential storage) in under 3 minutes with zero credential exposure in config files or logs
+- **SC-001**: Users can complete first-time setup (credential storage including PIN and OTP secret) in under 3 minutes with zero credential exposure in config files or logs
 - **SC-002**: Users can establish VPN connection in under 10 seconds from command execution to connected state (excluding network latency)
-- **SC-003**: 100% of sensitive data (OTP secrets, passwords) is stored in GNOME Keyring—zero instances of plaintext secrets in filesystem, environment variables, or logs
+- **SC-003**: 100% of sensitive data (PINs, OTP secrets, passwords) is stored in GNOME Keyring—zero instances of plaintext secrets in filesystem, environment variables, or logs
 - **SC-004**: System provides actionable error messages for 100% of failure modes (authentication, network, configuration, keyring access)
-- **SC-005**: Generated OTP tokens are valid for TOTP authentication with 99.9%+ success rate (failures only due to clock skew or server-side issues)
+- **SC-005**: Complete passwords (PIN + OTP) generated by akon MUST match passwords generated by auto-openconnect's `password_generator.py` for the same PIN, secret, and time window (validated via integration tests comparing outputs from both implementations within same 30-second TOTP window)
 - **SC-006**: Automated reconnection succeeds within 30 seconds of network restoration in 95%+ of cases
-- **SC-007**: Users can integrate the `get-password` command with external tools (piping, scripting) without parsing complexity
-- **SC-008**: System maintains >90% code coverage for security-critical modules (OTP generation, keyring operations, credential handling)
+- **SC-007**: Users can integrate the `get-password` command with external tools (piping, scripting) without parsing complexity; output format matches auto-openconnect exactly (10 characters, no separators)
+- **SC-008**: System maintains >90% code coverage for security-critical modules (PIN storage, OTP generation, keyring operations, credential handling)
 
 ## Assumptions
 

@@ -55,7 +55,9 @@
 
 - [x] T013 [P] [US1] Unit test for VpnConfig validation in `akon-core/tests/config_tests.rs` (test valid/invalid URLs, empty username, invalid port)
 - [x] T014 [P] [US1] Unit test for OtpSecret Base32 validation in `akon-core/tests/auth_tests.rs` (test valid Base32, invalid characters, wrong length)
+- [ ] T014a [P] [US1] Unit test for PIN validation in `akon-core/tests/auth_tests.rs` (test valid 4-digit PIN, invalid formats: 3 digits, 5 digits, letters, special chars)
 - [x] T015 [P] [US1] Integration test for keyring store/retrieve in `tests/integration/keyring_tests.rs` (requires GNOME Keyring mock or D-Bus mock)
+- [ ] T015a [P] [US1] Integration test for PIN keyring store/retrieve in `tests/integration/keyring_tests.rs` (test PIN storage with service name `akon-vpn-pin`)
 - [x] T016 [US1] Integration test for setup command flow in `tests/integration/setup_tests.rs` (test overwrite confirmation, keyring lock detection)
 
 ### Implementation for User Story 1
@@ -64,11 +66,15 @@
 - [x] T018 [P] [US1] Implement VpnConfig::validate() method in `akon-core/src/config/mod.rs`
 - [x] T019 [P] [US1] Implement TOML config file I/O (load, save) in `akon-core/src/config/toml_config.rs`
 - [x] T020 [P] [US1] Implement OtpSecret struct with Base32 validation in `akon-core/src/auth/mod.rs`
+- [ ] T020a [P] [US1] Implement Pin struct with validation in `akon-core/src/auth/mod.rs` (validate exactly 4 numeric digits, wrapped in `secrecy::Secret<String>`)
 - [x] T021 [US1] Implement keyring operations (store, retrieve, detect existing) in `akon-core/src/auth/keyring.rs` using secret-service crate
+- [ ] T021a [US1] Add PIN keyring operations in `akon-core/src/auth/keyring.rs` (store_pin, retrieve_pin with service name `akon-vpn-pin`)
 - [x] T022 [US1] Implement setup command in `src/cli/setup.rs` (interactive prompts, validation, keyring + config save)
+- [ ] T022a [US1] Update setup command to prompt for PIN in `src/cli/setup.rs` (secure input, validate format, store in keyring)
 - [x] T023 [US1] Add overwrite confirmation logic to setup command (detect existing credentials, prompt "Overwrite existing setup? (y/N)")
 - [x] T024 [US1] Add keyring availability check and graceful error handling in setup command
 - [x] T025 [US1] Ensure all logging in setup command sanitizes sensitive values (no OTP secrets in logs)
+- [ ] T025a [US1] Ensure all logging in setup command sanitizes PINs (no PINs in logs, wrapped in secrecy::Secret)
 - [x] T026 [US1] Run integration tests for US1 to validate implementation
 
 **Checkpoint**: User Story 1 complete - users can run `akon setup` and credentials are securely stored
@@ -84,6 +90,10 @@
 ### Tests for User Story 2 (TDD - Write First, Ensure Fail)
 
 - [x] T027 [P] [US2] Unit test for TOTP generation in `akon-core/tests/auth_tests.rs` (test RFC 6238 compliance, 30s time step, HMAC-SHA1/SHA256)
+- [ ] T027a [P] [US2] Cross-compatibility test for TOTP generation in `akon-core/tests/auth_tests.rs` (test that akon's TOTP matches auto-openconnect's lib.py for same secret and timestamp)
+- [ ] T027b [P] [US2] Unit test for custom Base32 decoding in `akon-core/tests/auth_tests.rs` (test whitespace removal, padding logic matching auto-openconnect)
+- [ ] T027c [P] [US2] Unit test for custom HMAC-SHA1 in `akon-core/tests/auth_tests.rs` (test against known test vectors from RFC 2104 and RFC 6238)
+- [ ] T027d [P] [US2] Unit test for complete password generation (PIN + OTP) in `akon-core/tests/auth_tests.rs` (test 10-character output format)
 - [x] T028 [P] [US2] Unit test for ConnectionState transitions in `akon-core/tests/vpn_tests.rs` (test disconnected → connecting → connected → error states)
 - [x] T029 [P] [US2] Integration test for OpenConnect FFI wrapper in `tests/integration/openconnect_tests.rs` (mock or stub FFI calls)
 - [x] T030 [US2] Integration test for daemon spawn and IPC in `tests/integration/daemon_tests.rs` (test parent blocks until child signals, Unix socket communication)
@@ -92,39 +102,51 @@
 ### Implementation for User Story 2
 
 - [x] T032 [P] [US2] Implement TOTP generation in `akon-core/src/auth/totp.rs` using totp-lite crate (RFC 6238, 30s steps, HMAC-SHA1/SHA256)
+- [ ] T032a [P] [US2] **REFACTOR**: Replace totp-lite with custom TOTP implementation in `akon-core/src/auth/totp.rs` matching auto-openconnect's algorithm exactly
+- [ ] T032b [P] [US2] Implement custom Base32 decode in `akon-core/src/auth/base32.rs` (clean whitespace, pad to 8-char boundaries, casefold=true)
+- [ ] T032c [P] [US2] Implement custom HMAC-SHA1 in `akon-core/src/auth/hmac.rs` following RFC 2104 (64-byte blocks, ipad=0x36, opad=0x5C)
+- [ ] T032d [P] [US2] Implement HOTP counter as `timestamp / 30` (integer div) in `akon-core/src/auth/totp.rs` matching Python behavior
+- [ ] T032e [P] [US2] Implement complete password generation (PIN + OTP) in `akon-core/src/auth/password.rs` (retrieve PIN, generate OTP, concatenate)
 - [x] T033 [P] [US2] Implement ConnectionState enum and state machine in `akon-core/src/vpn/state.rs` (with Arc<Mutex<ConnectionState>> for sharing)
 - [x] T034 [US2] Implement OpenConnect FFI safe wrappers in `akon-core/src/vpn/openconnect.rs` (connection establishment, OTP callback, error mapping)
+- [ ] T034a [US2] **REFACTOR**: Update OpenConnect FFI password callback to pass complete password (PIN + OTP) instead of OTP only
 - [x] T035 [US2] Implement daemon process management in `src/daemon/process.rs` (daemonize crate, PID file handling)
 - [x] T036 [US2] Implement Unix socket IPC for daemon communication in `src/daemon/ipc.rs` (parent-child signals, connection status messages)
 - [x] T037 [US2] Implement vpn on command in `src/cli/vpn.rs` (load config, retrieve OTP secret, generate token, spawn daemon, block until connected)
+- [ ] T037a [US2] **REFACTOR**: Update vpn on command to retrieve PIN + generate complete password before connecting
 - [x] T041 [US2] Implement vpn off command in `src/cli/vpn.rs` (graceful daemon shutdown, cleanup PID file and Unix socket)
 - [x] T042 [US2] Add idempotency to vpn off command (handle already disconnected state gracefully)
 - [x] T038 [US2] Add idempotency check to vpn on command (detect existing daemon via PID file, return success if already connected)
 - [x] T039 [US2] Implement error category distinction in vpn on command (authentication vs network vs configuration errors per FR-009)
 - [x] T040 [US2] Add exit code mapping (0=success, 1=auth/network failure, 2=config error)
 - [x] T043 [US2] Ensure all logging sanitizes OTP tokens (use secrecy::Secret<T>, no ExposeSecret in log calls)
+- [ ] T043a [US2] Ensure all logging sanitizes PINs (use secrecy::Secret<T>, no ExposeSecret in log calls)
 - [x] T044 [US2] Run integration and system tests for US2 to validate implementation
 
 **Checkpoint**: User Story 2 complete - users can run `akon vpn on` and `akon vpn off` to manage VPN connection
 
 ---
 
-## Phase 5: User Story 3 - Manual OTP Generation for External Use (Priority: P2)
+## Phase 5: User Story 3 - Manual Password Generation for External Use (Priority: P2)
 
-**Goal**: Enable users to generate OTP tokens for use outside the CLI (browser login, troubleshooting)
+**Goal**: Enable users to generate complete passwords (PIN + OTP) for use outside the CLI (browser login, troubleshooting)
 
-**Independent Test**: After setup, run `akon get-password` → verify only 6-8 digit token on stdout → pipe to another command → verify no formatting noise
+**Independent Test**: After setup, run `akon get-password` → verify only 10-character password (PIN + OTP) on stdout → pipe to another command → verify no formatting noise → compare with auto-openconnect output
 
 ### Tests for User Story 3 (TDD - Write First, Ensure Fail)
 
 - [x] T045 [P] [US3] Unit test for get-password command output format in `tests/unit/get_password_tests.rs` (test stdout only contains token, errors go to stderr)
+- [ ] T045a [P] [US3] **REFACTOR**: Update unit test to verify 10-character output (PIN + OTP), not just OTP
+- [ ] T045b [P] [US3] Cross-compatibility test for get-password in `tests/integration/get_password_tests.rs` (compare akon output with auto-openconnect for same credentials)
 - [x] T046 [US3] Integration test for get-password in `tests/integration/get_password_tests.rs` (test with missing keyring entry, test piping behavior)
 
 ### Implementation for User Story 3
 
 - [x] T047 [US3] Implement get-password command in `src/cli/get_password.rs` (retrieve OTP secret, generate token, output to stdout only)
+- [ ] T047a [US3] **REFACTOR**: Update get-password to retrieve PIN, generate complete password (PIN + OTP), output 10 characters to stdout
 - [x] T048 [US3] Ensure errors written to stderr (not stdout) for pipe-friendly behavior
 - [x] T049 [US3] Add exit code handling (0=success, 1=keyring error)
+- [ ] T049a [US3] Update error handling for missing PIN (separate error from missing OTP secret)
 - [x] T050 [US3] Run integration tests for US3 to validate implementation
 
 **Checkpoint**: User Story 3 complete - users can run `akon get-password` for manual OTP generation
@@ -186,11 +208,12 @@
 
 **Purpose**: Improvements that affect multiple user stories and final validation
 
-- [ ] T070 [P] Security audit: Review all logging calls to ensure no sensitive data exposure (grep for OTP, token, secret, password in log statements)
+- [ ] T070 [P] Security audit: Review all logging calls to ensure no sensitive data exposure (grep for PIN, OTP, token, secret, password in log statements)
 - [ ] T071 [P] Security audit: Review all unsafe FFI code in `akon-core/src/vpn/openconnect.rs` for memory safety issues
 - [ ] T072 Run cargo clippy --all-targets --all-features and fix all warnings
 - [ ] T073 Run cargo fmt --all and ensure consistent formatting
 - [ ] T074 [P] Validate >90% code coverage for security modules (akon-core/src/auth/, akon-core/src/types.rs) using cargo-tarpaulin or cargo-llvm-cov
+- [ ] T074a [P] Cross-implementation validation: Run integration test comparing akon and auto-openconnect password generation for same credentials
 - [ ] T075 [P] Update README.md with installation instructions, quick start guide, and troubleshooting section
 - [ ] T076 [P] Validate quickstart.md scenarios manually (run through all examples)
 - [ ] T077 Code cleanup: Remove dead code, unused imports, TODO comments

@@ -82,6 +82,12 @@ pub enum KeyringError {
 
     #[error("Invalid credential format")]
     InvalidFormat,
+
+    #[error("PIN not found in keyring")]
+    PinNotFound,
+
+    #[error("OTP secret not found in keyring")]
+    OtpSecretNotFound,
 }
 
 /// VPN connection operation errors
@@ -117,6 +123,15 @@ pub enum OtpError {
 
     #[error("System time error")]
     TimeError,
+
+    #[error("Invalid PIN format: must be exactly 4 numeric digits")]
+    InvalidPinFormat,
+
+    #[error("HMAC-SHA1 computation failed")]
+    HmacFailed,
+
+    #[error("Invalid HOTP counter")]
+    InvalidCounter,
 }
 
 /// Result type alias for convenience

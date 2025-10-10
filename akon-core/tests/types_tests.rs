@@ -1,8 +1,9 @@
 //! Unit tests for type definitions and wrappers
 //!
-//! Tests ConnectionState, KeyringEntry, and IpcMessage types.
+//! Tests ConnectionState, KeyringEntry, IpcMessage types, and secure wrappers.
 
-use akon_core::types::{ConnectionState, IpcMessage, KeyringEntry};
+use akon_core::types::{ConnectionState, IpcMessage, KeyringEntry, Pin, VpnPassword, TotpToken};
+use akon_core::error::OtpError;
 use std::time::SystemTime;
 
 #[test]
@@ -208,4 +209,105 @@ fn test_connection_state_serialization() {
     let deserialized: ConnectionState = serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert_eq!(state, deserialized);
+}
+
+#[cfg(test)]
+mod pin_tests {
+    use super::*;
+
+    #[test]
+    fn test_pin_valid_four_digits() {
+        let pin = Pin::new("1234".to_string());
+        assert!(pin.is_ok());
+        assert_eq!(pin.unwrap().expose(), "1234");
+    }
+
+    #[test]
+    fn test_pin_valid_all_zeros() {
+        let pin = Pin::new("0000".to_string());
+        assert!(pin.is_ok());
+        assert_eq!(pin.unwrap().expose(), "0000");
+    }
+
+    #[test]
+    fn test_pin_valid_all_nines() {
+        let pin = Pin::new("9999".to_string());
+        assert!(pin.is_ok());
+        assert_eq!(pin.unwrap().expose(), "9999");
+    }
+
+    #[test]
+    fn test_pin_invalid_too_short() {
+        let pin = Pin::new("123".to_string());
+        assert!(pin.is_err());
+        assert_eq!(pin.unwrap_err(), OtpError::InvalidPinFormat);
+    }
+
+    #[test]
+    fn test_pin_invalid_too_long() {
+        let pin = Pin::new("12345".to_string());
+        assert!(pin.is_err());
+        assert_eq!(pin.unwrap_err(), OtpError::InvalidPinFormat);
+    }
+
+    #[test]
+    fn test_pin_invalid_contains_letters() {
+        let pin = Pin::new("12ab".to_string());
+        assert!(pin.is_err());
+        assert_eq!(pin.unwrap_err(), OtpError::InvalidPinFormat);
+    }
+
+    #[test]
+    fn test_pin_invalid_contains_special_chars() {
+        let pin = Pin::new("12@4".to_string());
+        assert!(pin.is_err());
+        assert_eq!(pin.unwrap_err(), OtpError::InvalidPinFormat);
+    }
+
+    #[test]
+    fn test_pin_invalid_contains_space() {
+        let pin = Pin::new("12 4".to_string());
+        assert!(pin.is_err());
+        assert_eq!(pin.unwrap_err(), OtpError::InvalidPinFormat);
+    }
+
+    #[test]
+    fn test_pin_invalid_empty() {
+        let pin = Pin::new("".to_string());
+        assert!(pin.is_err());
+        assert_eq!(pin.unwrap_err(), OtpError::InvalidPinFormat);
+    }
+}
+
+#[cfg(test)]
+mod vpn_password_tests {
+    use super::*;
+
+    #[test]
+    fn test_vpn_password_from_components() {
+        let pin = Pin::new("1234".to_string()).unwrap();
+        let otp = TotpToken::new("567890".to_string());
+        let password = VpnPassword::from_components(&pin, &otp);
+
+        assert_eq!(password.expose(), "1234567890");
+        assert_eq!(password.expose().len(), 10);
+    }
+
+    #[test]
+    fn test_vpn_password_correct_format() {
+        let pin = Pin::new("0000".to_string()).unwrap();
+        let otp = TotpToken::new("123456".to_string());
+        let password = VpnPassword::from_components(&pin, &otp);
+
+        // Verify format: 4 digits (PIN) + 6 digits (OTP) = 10 characters
+        let pwd_str = password.expose();
+        assert_eq!(pwd_str.len(), 10);
+        assert!(pwd_str.chars().all(|c| c.is_ascii_digit()));
+    }
+
+    #[test]
+    fn test_vpn_password_new() {
+        let password = VpnPassword::new("1234567890".to_string());
+        assert_eq!(password.expose(), "1234567890");
+    }
 }

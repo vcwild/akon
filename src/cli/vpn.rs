@@ -6,8 +6,7 @@
 use std::thread;
 use std::time::Duration;
 
-use akon_core::auth::keyring::retrieve_otp_secret;
-use akon_core::auth::totp::generate_totp_default;
+use akon_core::auth::password::generate_password;
 use akon_core::config::toml_config::load_config;
 use akon_core::error::{AkonError, VpnError};
 use akon_core::vpn::state::{ConnectionMetadata, ConnectionState, SharedConnectionState};
@@ -28,14 +27,9 @@ pub fn run_vpn_on() -> Result<(), AkonError> {
     let config = load_config()?;
     println!("Loaded configuration for server: {}", config.server);
 
-    // Retrieve OTP secret
-    let otp_secret_str = retrieve_otp_secret(&config.username)?;
-    let otp_secret = akon_core::types::OtpSecret::new(otp_secret_str);
-    println!("Retrieved OTP secret from keyring");
-
-    // Generate initial TOTP token
-    let _initial_token = generate_totp_default(otp_secret.expose())?;
-    println!("Generated initial TOTP token");
+    // Generate complete VPN password (PIN + OTP)
+    let password = generate_password(&config.username)?;
+    println!("Generated VPN password from keyring credentials");
 
     // Create shared connection state
     let connection_state = SharedConnectionState::new();
@@ -45,7 +39,7 @@ pub fn run_vpn_on() -> Result<(), AkonError> {
     match unsafe { libc::fork() } {
         0 => {
             // Child process (daemon)
-            run_daemon(&config, &otp_secret, &connection_state)?;
+            run_daemon(&config, &password, &connection_state)?;
             std::process::exit(0);
         }
         pid if pid > 0 => {
@@ -135,7 +129,7 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
 /// Run the daemon process
 fn run_daemon(
     config: &akon_core::config::VpnConfig,
-    _otp_secret: &akon_core::types::OtpSecret,
+    _password: &akon_core::types::VpnPassword,
     connection_state: &SharedConnectionState,
 ) -> Result<(), AkonError> {
     // Daemonize the process

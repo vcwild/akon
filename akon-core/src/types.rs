@@ -76,6 +76,69 @@ impl From<String> for TotpToken {
     }
 }
 
+/// Wrapper for 4-digit PIN used in VPN authentication
+///
+/// The PIN is the first component of the complete VPN password (PIN + OTP).
+/// It must be exactly 4 numeric digits and is stored securely in GNOME Keyring.
+#[derive(Clone, Debug)]
+pub struct Pin(Secret<String>);
+
+impl Pin {
+    /// Create a new PIN from a string, validating the format
+    ///
+    /// # Errors
+    ///
+    /// Returns `OtpError::InvalidPinFormat` if the PIN is not exactly 4 numeric digits
+    pub fn new(pin: String) -> Result<Self, crate::error::OtpError> {
+        // Validate: exactly 4 digits, no letters or special characters
+        if pin.len() != 4 {
+            return Err(crate::error::OtpError::InvalidPinFormat);
+        }
+
+        if !pin.chars().all(|c| c.is_ascii_digit()) {
+            return Err(crate::error::OtpError::InvalidPinFormat);
+        }
+
+        Ok(Self(Secret::new(pin)))
+    }
+
+    /// Expose the PIN value (use with caution!)
+    ///
+    /// This should only be called when absolutely necessary,
+    /// such as when generating the complete password for VPN authentication.
+    pub fn expose(&self) -> &str {
+        self.0.expose_secret()
+    }
+}
+
+/// Wrapper for complete VPN password (PIN + OTP)
+///
+/// This type represents the concatenation of a 4-digit PIN and 6-digit OTP,
+/// forming the complete 10-character password used for VPN authentication.
+#[derive(Clone, Debug)]
+pub struct VpnPassword(Secret<String>);
+
+impl VpnPassword {
+    /// Create a new VPN password from PIN and OTP components
+    pub fn from_components(pin: &Pin, otp: &TotpToken) -> Self {
+        let password = format!("{}{}", pin.expose(), otp.expose());
+        Self(Secret::new(password))
+    }
+
+    /// Create a VPN password from a raw string (for testing)
+    pub fn new(password: String) -> Self {
+        Self(Secret::new(password))
+    }
+
+    /// Expose the password value (use with caution!)
+    ///
+    /// This should only be called when passing to OpenConnect or
+    /// outputting to stdout for the get-password command.
+    pub fn expose(&self) -> &str {
+        self.0.expose_secret()
+    }
+}
+
 /// Connection state for VPN operations
 ///
 /// Tracks the current state of the VPN connection with associated metadata.
@@ -110,13 +173,17 @@ impl Default for ConnectionState {
 /// Information about a credential stored in the GNOME Keyring.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KeyringEntry {
-    /// Service name (should be "akon-vpn-otp")
+    /// Service name (e.g., "akon-vpn-otp" or "akon-vpn-pin")
     pub service: String,
     /// Username/account identifier
     pub username: String,
     /// When the entry was created/modified
     pub created: std::time::SystemTime,
 }
+
+/// Constants for keyring service names
+pub const KEYRING_SERVICE_OTP: &str = "akon-vpn-otp";
+pub const KEYRING_SERVICE_PIN: &str = "akon-vpn-pin";
 
 /// IPC message types for daemon communication
 ///

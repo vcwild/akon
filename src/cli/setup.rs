@@ -6,7 +6,7 @@ use akon_core::{
     auth::keyring,
     config::{toml_config, VpnConfig},
     error::AkonError,
-    types::OtpSecret,
+    types::{OtpSecret, Pin},
 };
 use std::io::{self, Write};
 
@@ -36,6 +36,7 @@ pub fn run_setup() -> Result<(), AkonError> {
     // Collect configuration interactively
     let config = collect_vpn_config()?;
     let otp_secret = collect_otp_secret()?;
+    let pin = collect_pin()?;
 
     // Validate configuration
     config.validate().map_err(|e| {
@@ -58,6 +59,9 @@ pub fn run_setup() -> Result<(), AkonError> {
 
     // Store OTP secret in keyring
     keyring::store_otp_secret(&config.username, otp_secret.expose())?;
+
+    // Store PIN in keyring
+    keyring::store_pin(&config.username, &pin)?;
 
     println!("✅ Setup complete!");
     println!();
@@ -148,6 +152,35 @@ fn collect_otp_secret() -> Result<OtpSecret, AkonError> {
             Err(_) => {
                 println!("❌ Invalid Base32 format. Please check your secret and try again.");
                 println!("   Valid characters: A-Z, 2-7, =, /");
+                continue;
+            }
+        }
+    }
+}
+
+/// Collect PIN interactively
+fn collect_pin() -> Result<Pin, AkonError> {
+    println!();
+    println!("PIN Configuration:");
+    println!("-----------------");
+
+    println!("Enter a 4-digit PIN for your VPN connection.");
+    println!("This PIN will be combined with your OTP token to create the complete password.");
+    println!("The PIN will be stored securely in your system keyring.");
+    println!();
+
+    loop {
+        let pin_input = prompt_password("4-digit PIN")?;
+
+        if pin_input.trim().is_empty() {
+            println!("❌ PIN cannot be empty. Please try again.");
+            continue;
+        }
+
+        match Pin::new(pin_input) {
+            Ok(pin) => return Ok(pin),
+            Err(_) => {
+                println!("❌ PIN must be exactly 4 digits (0-9). Please try again.");
                 continue;
             }
         }

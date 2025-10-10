@@ -45,10 +45,13 @@ timeout = 30
     )
     .expect("Failed to write config file");
 
-    // Store test OTP secret in keyring
+    // Store test credentials in keyring
     let test_username = "__akon_get_password_test__";
     let test_secret = "JBSWY3DPEHPK3PXP"; // Valid base32
+    let test_pin = akon_core::types::Pin::new("1234".to_string()).expect("Valid PIN");
+
     keyring::store_otp_secret(test_username, test_secret).expect("Failed to store test OTP secret");
+    keyring::store_pin(test_username, &test_pin).expect("Failed to store test PIN");
 
     // Run get-password command
     let output = Command::new(AKON_BINARY)
@@ -59,9 +62,10 @@ timeout = 30
 
     // Clean up
     let _ = keyring::delete_otp_secret(test_username);
+    let _ = keyring::delete_pin(test_username);
     env::remove_var("AKON_CONFIG_DIR");
 
-    // Should succeed and output a TOTP token
+    // Should succeed and output a complete password (PIN + OTP)
     assert!(
         output.status.success(),
         "get-password should succeed with valid config and keyring"
@@ -69,15 +73,24 @@ timeout = 30
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    // Should output only the token (6-8 digits)
-    assert!(
-        stdout.len() >= 6 && stdout.len() <= 8,
-        "Token should be 6-8 digits, got: '{}'",
-        stdout
+    // Should output exactly 10 characters (4-digit PIN + 6-digit OTP)
+    assert_eq!(
+        stdout.len(),
+        10,
+        "Password should be exactly 10 characters (PIN + OTP), got: '{}' with length {}",
+        stdout,
+        stdout.len()
     );
     assert!(
         stdout.chars().all(|c| c.is_numeric()),
-        "Token should contain only digits, got: '{}'",
+        "Password should contain only digits, got: '{}'",
+        stdout
+    );
+
+    // Verify it starts with the PIN
+    assert!(
+        stdout.starts_with("1234"),
+        "Password should start with PIN '1234', got: '{}'",
         stdout
     );
 
