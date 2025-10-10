@@ -28,15 +28,17 @@ impl DaemonProcess {
             return Ok(false);
         }
 
-        let pid_content = fs::read_to_string(&self.pid_file)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let pid_content = fs::read_to_string(&self.pid_file).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to read PID file: {}", e),
-            }))?;
+            })
+        })?;
 
-        let pid: i32 = pid_content.trim().parse()
-            .map_err(|_| AkonError::Vpn(VpnError::ConnectionFailed {
+        let pid: i32 = pid_content.trim().parse().map_err(|_| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: "Invalid PID in PID file".to_string(),
-            }))?;
+            })
+        })?;
 
         // Check if process is running
         match nix::unistd::getpgid(Some(nix::unistd::Pid::from_raw(pid))) {
@@ -56,26 +58,28 @@ impl DaemonProcess {
     pub fn daemonize(&self) -> Result<(), AkonError> {
         // Ensure PID file directory exists
         if let Some(parent) = self.pid_file.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+            fs::create_dir_all(parent).map_err(|e| {
+                AkonError::Vpn(VpnError::ConnectionFailed {
                     reason: format!("Failed to create PID file directory: {}", e),
-                }))?;
+                })
+            })?;
         }
 
         let daemonize = Daemonize::new()
             .pid_file(&self.pid_file)
             .chown_pid_file(true)
-            .working_directory(std::env::current_dir()
-                .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+            .working_directory(std::env::current_dir().map_err(|e| {
+                AkonError::Vpn(VpnError::ConnectionFailed {
                     reason: format!("Failed to get current directory: {}", e),
-                }))?
-            )
+                })
+            })?)
             .umask(0o027); // Restrictive permissions
 
-        daemonize.start()
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        daemonize.start().map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to daemonize process: {}", e),
-            }))?;
+            })
+        })?;
 
         info!("Successfully daemonized process, PID: {}", process::id());
         Ok(())
@@ -89,15 +93,17 @@ impl DaemonProcess {
             }));
         }
 
-        let pid_content = fs::read_to_string(&self.pid_file)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let pid_content = fs::read_to_string(&self.pid_file).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to read PID file: {}", e),
-            }))?;
+            })
+        })?;
 
-        pid_content.trim().parse()
-            .map_err(|_| AkonError::Vpn(VpnError::ConnectionFailed {
+        pid_content.trim().parse().map_err(|_| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: "Invalid PID in PID file".to_string(),
-            }))
+            })
+        })
     }
 
     /// Stop the daemon process
@@ -109,9 +115,11 @@ impl DaemonProcess {
             nix::unistd::Pid::from_raw(pid),
             nix::sys::signal::Signal::SIGTERM,
         )
-        .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
-            reason: format!("Failed to send SIGTERM to daemon: {}", e),
-        }))?;
+        .map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
+                reason: format!("Failed to send SIGTERM to daemon: {}", e),
+            })
+        })?;
 
         // Wait a bit for graceful shutdown
         std::thread::sleep(std::time::Duration::from_secs(2));
@@ -123,9 +131,11 @@ impl DaemonProcess {
                 nix::unistd::Pid::from_raw(pid),
                 nix::sys::signal::Signal::SIGKILL,
             )
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
-                reason: format!("Failed to send SIGKILL to daemon: {}", e),
-            }))?;
+            .map_err(|e| {
+                AkonError::Vpn(VpnError::ConnectionFailed {
+                    reason: format!("Failed to send SIGKILL to daemon: {}", e),
+                })
+            })?;
         }
 
         // Clean up PID file

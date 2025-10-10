@@ -3,8 +3,8 @@
 //! A secure command-line tool for managing VPN connections with
 //! automatic TOTP authentication using GNOME Keyring storage.
 
-use clap::{Parser, Subcommand};
 use akon_core::{error::AkonError, init_logging};
+use clap::{Parser, Subcommand};
 
 mod cli;
 mod daemon;
@@ -50,23 +50,13 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Setup => {
-            cli::setup::run_setup()
-        }
+        Commands::Setup => cli::setup::run_setup(),
         Commands::Vpn { action } => match action {
-            VpnCommands::On => {
-                cli::vpn::run_vpn_on()
-            }
-            VpnCommands::Off => {
-                cli::vpn::run_vpn_off()
-            }
-            VpnCommands::Status => {
-                cli::vpn::run_vpn_status()
-            }
+            VpnCommands::On => cli::vpn::run_vpn_on(),
+            VpnCommands::Off => cli::vpn::run_vpn_off(),
+            VpnCommands::Status => cli::vpn::run_vpn_status(),
         },
-        Commands::GetPassword => {
-            cli::get_password::run_get_password()
-        }
+        Commands::GetPassword => cli::get_password::run_get_password(),
     };
 
     match result {

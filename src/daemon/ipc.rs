@@ -38,38 +38,44 @@ impl IpcClient {
 
     /// Send a message and receive a response
     pub fn send_message(&self, message: &IpcMessage) -> Result<IpcMessage, AkonError> {
-        let mut stream = UnixStream::connect(&self.socket_path)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let mut stream = UnixStream::connect(&self.socket_path).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to connect to daemon socket: {}", e),
-            }))?;
+            })
+        })?;
 
         // Serialize and send message
-        let message_data = serde_json::to_vec(message)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let message_data = serde_json::to_vec(message).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to serialize message: {}", e),
-            }))?;
+            })
+        })?;
 
-        stream.write_all(&message_data)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        stream.write_all(&message_data).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to send message: {}", e),
-            }))?;
+            })
+        })?;
 
-        stream.flush()
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        stream.flush().map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to flush message: {}", e),
-            }))?;
+            })
+        })?;
 
         // Read response
         let mut buffer = Vec::new();
-        stream.read_to_end(&mut buffer)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        stream.read_to_end(&mut buffer).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to read response: {}", e),
-            }))?;
+            })
+        })?;
 
-        let response: IpcMessage = serde_json::from_slice(&buffer)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let response: IpcMessage = serde_json::from_slice(&buffer).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to deserialize response: {}", e),
-            }))?;
+            })
+        })?;
 
         Ok(response)
     }
@@ -87,10 +93,11 @@ impl IpcClient {
     /// Request disconnection
     pub fn disconnect(&self) -> Result<(), AkonError> {
         match self.send_message(&IpcMessage::DisconnectRequest)? {
-            IpcMessage::DisconnectResponse(result) => result
-                .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+            IpcMessage::DisconnectResponse(result) => result.map_err(|e| {
+                AkonError::Vpn(VpnError::ConnectionFailed {
                     reason: format!("Disconnect failed: {}", e),
-                })),
+                })
+            }),
             _ => Err(AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: "Unexpected response to disconnect request".to_string(),
             })),
@@ -106,14 +113,18 @@ pub struct IpcServer {
 
 impl IpcServer {
     /// Create a new IPC server
-    pub fn new(socket_path: PathBuf, connection_state: SharedConnectionState) -> Result<Self, AkonError> {
+    pub fn new(
+        socket_path: PathBuf,
+        connection_state: SharedConnectionState,
+    ) -> Result<Self, AkonError> {
         // Clean up any existing socket
         let _ = std::fs::remove_file(&socket_path);
 
-        let listener = UnixListener::bind(&socket_path)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let listener = UnixListener::bind(&socket_path).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to bind IPC socket: {}", e),
-            }))?;
+            })
+        })?;
 
         Ok(Self {
             listener,
@@ -144,17 +155,22 @@ impl IpcServer {
     }
 
     /// Handle a single IPC connection
-    fn handle_connection(stream: &mut UnixStream, connection_state: &SharedConnectionState) -> Result<(), AkonError> {
+    fn handle_connection(
+        stream: &mut UnixStream,
+        connection_state: &SharedConnectionState,
+    ) -> Result<(), AkonError> {
         let mut buffer = Vec::new();
-        stream.read_to_end(&mut buffer)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        stream.read_to_end(&mut buffer).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to read IPC message: {}", e),
-            }))?;
+            })
+        })?;
 
-        let message: IpcMessage = serde_json::from_slice(&buffer)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let message: IpcMessage = serde_json::from_slice(&buffer).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to deserialize IPC message: {}", e),
-            }))?;
+            })
+        })?;
 
         let response = match message {
             IpcMessage::StatusRequest => {
@@ -173,20 +189,23 @@ impl IpcServer {
             }
         };
 
-        let response_data = serde_json::to_vec(&response)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        let response_data = serde_json::to_vec(&response).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to serialize response: {}", e),
-            }))?;
+            })
+        })?;
 
-        stream.write_all(&response_data)
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        stream.write_all(&response_data).map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to send response: {}", e),
-            }))?;
+            })
+        })?;
 
-        stream.flush()
-            .map_err(|e| AkonError::Vpn(VpnError::ConnectionFailed {
+        stream.flush().map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: format!("Failed to flush response: {}", e),
-            }))?;
+            })
+        })?;
 
         Ok(())
     }

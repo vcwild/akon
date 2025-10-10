@@ -8,9 +8,9 @@
 //! - Overwrite confirmation for existing setups
 //! - Keyring lock/unlock detection
 
-use std::process::Command;
-use akon_core::config::toml_config;
 use akon_core::auth::keyring;
+use akon_core::config::toml_config;
+use std::process::Command;
 
 const AKON_BINARY: &str = "target/debug/akon";
 
@@ -18,13 +18,16 @@ const AKON_BINARY: &str = "target/debug/akon";
 fn test_setup_command_help() {
     // Test that setup command shows help
     let output = Command::new(AKON_BINARY)
-        .args(&["setup", "--help"])
+        .args(["setup", "--help"])
         .output()
         .expect("Failed to run akon setup --help");
 
     assert!(output.status.success(), "Setup help command should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("setup"), "Help should mention setup command");
+    assert!(
+        stdout.contains("setup"),
+        "Help should mention setup command"
+    );
 }
 
 #[test]
@@ -32,11 +35,11 @@ fn test_setup_command_help() {
 fn test_setup_command_with_input() {
     // Test that the setup command can process input
     // This test provides mock input to simulate user interaction
-    use std::process::Stdio;
     use std::io::Write;
+    use std::process::Stdio;
 
     let mut child = Command::new(AKON_BINARY)
-        .args(&["setup"])
+        .args(["setup"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -52,6 +55,7 @@ fn test_setup_command_with_input() {
     // Kill the process after a short timeout since we can't fully complete setup
     std::thread::sleep(std::time::Duration::from_millis(500));
     let _ = child.kill();
+    let _ = child.wait(); // Wait to avoid zombie process
 
     // This test is mainly to ensure the setup command doesn't panic
     println!("Setup command can be invoked (requires manual testing for full workflow)");
@@ -65,10 +69,15 @@ fn test_config_directory_creation() {
     if result.is_ok() {
         // If config dir creation succeeds, test that config_exists works
         let exists_result = toml_config::config_exists();
-        assert!(exists_result.is_ok(), "config_exists should work after ensure_config_dir");
+        assert!(
+            exists_result.is_ok(),
+            "config_exists should work after ensure_config_dir"
+        );
     } else {
         // If config dir creation fails (e.g., permissions), that's also fine for this test
-        println!("Config directory creation failed - this may be expected in some test environments");
+        println!(
+            "Config directory creation failed - this may be expected in some test environments"
+        );
     }
 }
 
@@ -92,7 +101,10 @@ fn test_keyring_availability_integration() {
         assert!(exists, "Secret should exist after successful storage");
 
         let retrieved = keyring::retrieve_otp_secret(test_username).unwrap_or_default();
-        assert_eq!(retrieved, test_secret, "Retrieved secret should match stored secret");
+        assert_eq!(
+            retrieved, test_secret,
+            "Retrieved secret should match stored secret"
+        );
 
         // Clean up
         let _ = keyring::delete_otp_secret(test_username);
@@ -100,11 +112,16 @@ fn test_keyring_availability_integration() {
         println!("Keyring integration test passed - GNOME Keyring is available");
     } else {
         // Keyring not available - ensure operations fail gracefully
-        println!("Keyring not available for integration testing - this is expected in some environments");
+        println!(
+            "Keyring not available for integration testing - this is expected in some environments"
+        );
 
         // Verify that has_otp_secret returns false for nonexistent entries
         let exists = keyring::has_otp_secret(test_username).unwrap_or(true);
-        assert!(!exists, "Nonexistent secret should not exist even when keyring is unavailable");
+        assert!(
+            !exists,
+            "Nonexistent secret should not exist even when keyring is unavailable"
+        );
     }
 }
 

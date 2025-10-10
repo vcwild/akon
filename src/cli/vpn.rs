@@ -10,7 +10,7 @@ use akon_core::auth::keyring::retrieve_otp_secret;
 use akon_core::auth::totp::generate_totp_default;
 use akon_core::config::toml_config::load_config;
 use akon_core::error::{AkonError, VpnError};
-use akon_core::vpn::state::{ConnectionState, SharedConnectionState, ConnectionMetadata};
+use akon_core::vpn::state::{ConnectionMetadata, ConnectionState, SharedConnectionState};
 
 use crate::daemon::ipc::{get_default_socket_path, IpcClient};
 use crate::daemon::process::{get_default_pid_file, DaemonProcess};
@@ -101,29 +101,27 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
     let client = IpcClient::new(socket_path);
 
     match client.get_status() {
-        Ok(state) => {
-            match state {
-                ConnectionState::Disconnected => {
-                    println!("VPN Status: Disconnected");
-                }
-                ConnectionState::Connecting => {
-                    println!("VPN Status: Connecting...");
-                }
-                ConnectionState::Connected(ref metadata) => {
-                    println!("VPN Status: Connected");
-                    println!("Server: {}", metadata.server);
-                    println!("Username: {}", metadata.username);
-                    println!("Uptime: {}", metadata.uptime_display());
-                    println!("Daemon PID: {}", daemon.get_pid()?);
-                }
-                ConnectionState::Disconnecting => {
-                    println!("VPN Status: Disconnecting...");
-                }
-                ConnectionState::Error(ref reason) => {
-                    println!("VPN Status: Error - {}", reason);
-                }
+        Ok(state) => match state {
+            ConnectionState::Disconnected => {
+                println!("VPN Status: Disconnected");
             }
-        }
+            ConnectionState::Connecting => {
+                println!("VPN Status: Connecting...");
+            }
+            ConnectionState::Connected(ref metadata) => {
+                println!("VPN Status: Connected");
+                println!("Server: {}", metadata.server);
+                println!("Username: {}", metadata.username);
+                println!("Uptime: {}", metadata.uptime_display());
+                println!("Daemon PID: {}", daemon.get_pid()?);
+            }
+            ConnectionState::Disconnecting => {
+                println!("VPN Status: Disconnecting...");
+            }
+            ConnectionState::Error(ref reason) => {
+                println!("VPN Status: Error - {}", reason);
+            }
+        },
         Err(_) => {
             // IPC communication failed, but daemon is running
             println!("VPN Status: Unknown (daemon running but IPC unavailable)");
@@ -145,10 +143,8 @@ fn run_daemon(
     daemon.daemonize()?;
 
     // Set up IPC server
-    let ipc_server = crate::daemon::ipc::IpcServer::new(
-        get_default_socket_path(),
-        connection_state.clone(),
-    )?;
+    let ipc_server =
+        crate::daemon::ipc::IpcServer::new(get_default_socket_path(), connection_state.clone())?;
 
     // Start IPC server in a separate thread
     let ipc_handle = thread::spawn(move || {

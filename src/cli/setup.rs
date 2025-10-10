@@ -2,13 +2,13 @@
 //!
 //! Interactive command for first-time VPN configuration with secure credential storage.
 
-use std::io::{self, Write};
 use akon_core::{
-    config::{VpnConfig, toml_config},
-    types::OtpSecret,
     auth::keyring,
+    config::{toml_config, VpnConfig},
     error::AkonError,
+    types::OtpSecret,
 };
+use std::io::{self, Write};
 
 /// Run the setup command
 pub fn run_setup() -> Result<(), AkonError> {
@@ -40,14 +40,14 @@ pub fn run_setup() -> Result<(), AkonError> {
     // Validate configuration
     config.validate().map_err(|e| {
         AkonError::Config(akon_core::error::ConfigError::ValidationError {
-            message: format!("Configuration validation failed: {}", e)
+            message: format!("Configuration validation failed: {}", e),
         })
     })?;
 
     // Validate OTP secret
-    otp_secret.validate_base32().map_err(|e| {
-        AkonError::Otp(e)
-    })?;
+    otp_secret
+        .validate_base32()
+        .map_err(|e| AkonError::Otp(e))?;
 
     // Save configuration
     println!();
@@ -82,7 +82,9 @@ fn check_keyring_availability() -> Result<(), AkonError> {
             println!("❌ Keyring is not available or locked.");
             println!("Please ensure your system keyring is unlocked and available.");
             println!("On GNOME systems, this is usually handled automatically.");
-            Err(AkonError::Keyring(akon_core::error::KeyringError::ServiceUnavailable))
+            Err(AkonError::Keyring(
+                akon_core::error::KeyringError::ServiceUnavailable,
+            ))
         }
         Err(e) => Err(e),
     }
@@ -94,18 +96,23 @@ fn collect_vpn_config() -> Result<VpnConfig, AkonError> {
     println!("-----------------");
 
     let server = prompt_required("VPN Server (hostname or IP)", "vpn.example.com")?;
-    let port: u16 = prompt_required("VPN Port", "443")?
-        .parse()
-        .map_err(|_| AkonError::Config(akon_core::error::ConfigError::ValidationError {
-            message: "Invalid port number".to_string()
-        }))?;
+    let port: u16 = prompt_required("VPN Port", "443")?.parse().map_err(|_| {
+        AkonError::Config(akon_core::error::ConfigError::ValidationError {
+            message: "Invalid port number".to_string(),
+        })
+    })?;
 
     let username = prompt_required("Username", "")?;
     let realm = prompt_optional("Realm (optional)", "")?;
     let timeout: Option<u32> = prompt_optional("Connection timeout in seconds (optional)", "30")?
-        .parse().ok();
+        .parse()
+        .ok();
 
-    let realm = if realm.trim().is_empty() { None } else { Some(realm.trim().to_string()) };
+    let realm = if realm.trim().is_empty() {
+        None
+    } else {
+        Some(realm.trim().to_string())
+    };
 
     Ok(VpnConfig {
         server,
@@ -211,10 +218,10 @@ fn prompt_yes_no(prompt: &str, default_yes: bool) -> Result<bool, AkonError> {
 /// Low-level input prompting
 fn prompt_input(prompt: &str) -> Result<String, AkonError> {
     print!("{}", prompt);
-    io::stdout().flush().map_err(|e| AkonError::Io(e))?;
+    io::stdout().flush().map_err(AkonError::Io)?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(|e| AkonError::Io(e))?;
+    io::stdin().read_line(&mut input).map_err(AkonError::Io)?;
 
     Ok(input.trim_end().to_string())
 }

@@ -143,11 +143,11 @@
 
 ### Implementation for User Story 4
 
-- [ ] T052 [US4] Implement vpn status command in `src/cli/vpn.rs` (read daemon PID file, query connection state via IPC, display human-readable output)
-- [ ] T053 [US4] Add connection metadata to ConnectionState (connection start time, server endpoint, uptime calculation)
-- [ ] T054 [US4] Add IPC status query message type to `src/daemon/ipc.rs`
-- [ ] T055 [US4] Update daemon to respond to status queries with current ConnectionState
-- [ ] T056 [US4] Run integration tests for US4 to validate implementation
+- [x] T052 [US4] Implement vpn status command in `src/cli/vpn.rs` (read daemon PID file, query connection state via IPC, display human-readable output)
+- [x] T053 [US4] Add connection metadata to ConnectionState (connection start time, server endpoint, uptime calculation)
+- [x] T054 [US4] Add IPC status query message type to `src/daemon/ipc.rs`
+- [x] T055 [US4] Update daemon to respond to status queries with current ConnectionState
+- [x] T056 [US4] Run integration tests for US4 to validate implementation
 
 **Checkpoint**: User Story 4 complete - users can run `akon vpn status` to check connection state
 

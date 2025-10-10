@@ -3,17 +3,17 @@
 //! Tests the get-password command behavior including error handling
 //! and output format validation.
 
-use std::process::Command;
+use akon_core::auth::keyring;
 use std::env;
 use std::fs;
-use akon_core::auth::keyring;
+use std::process::Command;
 
 const AKON_BINARY: &str = "target/debug/akon";
 
 #[test]
 fn test_get_password_command_exists() {
     let output = Command::new(AKON_BINARY)
-        .args(&["get-password", "--help"])
+        .args(["get-password", "--help"])
         .output()
         .expect("Failed to run get-password --help");
 
@@ -41,18 +41,18 @@ timeout = 30
     fs::create_dir_all(&temp_config_dir).expect("Failed to create config dir");
     fs::write(
         std::path::Path::new(&temp_config_dir).join("config.toml"),
-        config_content
-    ).expect("Failed to write config file");
+        config_content,
+    )
+    .expect("Failed to write config file");
 
     // Store test OTP secret in keyring
     let test_username = "__akon_get_password_test__";
     let test_secret = "JBSWY3DPEHPK3PXP"; // Valid base32
-    keyring::store_otp_secret(test_username, test_secret)
-        .expect("Failed to store test OTP secret");
+    keyring::store_otp_secret(test_username, test_secret).expect("Failed to store test OTP secret");
 
     // Run get-password command
     let output = Command::new(AKON_BINARY)
-        .args(&["get-password"])
+        .args(["get-password"])
         .env("AKON_CONFIG_DIR", &temp_config_dir)
         .output()
         .expect("Failed to run get-password");
@@ -62,16 +62,31 @@ timeout = 30
     env::remove_var("AKON_CONFIG_DIR");
 
     // Should succeed and output a TOTP token
-    assert!(output.status.success(), "get-password should succeed with valid config and keyring");
+    assert!(
+        output.status.success(),
+        "get-password should succeed with valid config and keyring"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     // Should output only the token (6-8 digits)
-    assert!(stdout.len() >= 6 && stdout.len() <= 8, "Token should be 6-8 digits, got: '{}'", stdout);
-    assert!(stdout.chars().all(|c| c.is_numeric()), "Token should contain only digits, got: '{}'", stdout);
+    assert!(
+        stdout.len() >= 6 && stdout.len() <= 8,
+        "Token should be 6-8 digits, got: '{}'",
+        stdout
+    );
+    assert!(
+        stdout.chars().all(|c| c.is_numeric()),
+        "Token should contain only digits, got: '{}'",
+        stdout
+    );
 
     // Should have no stderr output for success case
-    assert!(stderr.is_empty(), "Should have no stderr output on success, got: '{}'", stderr);
+    assert!(
+        stderr.is_empty(),
+        "Should have no stderr output on success, got: '{}'",
+        stderr
+    );
 }
 
 #[test]
@@ -91,7 +106,7 @@ fn test_get_password_missing_config() {
 
     // Run get-password command
     let output = Command::new(AKON_BINARY)
-        .args(&["get-password"])
+        .args(["get-password"])
         .env("AKON_CONFIG_DIR", &temp_config_dir)
         .output()
         .expect("Failed to run get-password without config");
@@ -100,14 +115,24 @@ fn test_get_password_missing_config() {
     env::remove_var("AKON_CONFIG_DIR");
 
     // Should exit with code 2 (config error)
-    assert_eq!(output.status.code(), Some(2), "Should exit with code 2 for missing config");
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Should exit with code 2 for missing config"
+    );
 
     // Should have error message on stderr
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.is_empty(), "Should have error message on stderr");
-    assert!(stderr.contains("config") || stderr.contains("load"), "Error should mention config loading");
+    assert!(
+        stderr.contains("config") || stderr.contains("load"),
+        "Error should mention config loading"
+    );
 
     // Should have no stdout output for error case
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.trim().is_empty(), "Should have no stdout output on config error");
+    assert!(
+        stdout.trim().is_empty(),
+        "Should have no stdout output on config error"
+    );
 }
