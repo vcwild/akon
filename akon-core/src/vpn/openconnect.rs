@@ -46,11 +46,11 @@ impl OpenConnectConnection {
         // Create VPN info structure with null callbacks for now
         let vpninfo = unsafe {
             bindings::openconnect_vpninfo_new(
-                ptr::null(), // useragent (null = default)
-                None,        // validate_peer_cert
-                None,        // write_new_config
-                None,        // process_auth_form
-                None,        // progress
+                ptr::null(),     // useragent (null = default)
+                None,            // validate_peer_cert
+                None,            // write_new_config
+                None,            // process_auth_form
+                None,            // progress
                 ptr::null_mut(), // privdata
             )
         };
@@ -87,10 +87,17 @@ impl OpenConnectConnection {
     }
 
     /// Connect to VPN server
-    pub fn connect(&mut self, server: &str, _username: &str, _password: &str) -> Result<(), AkonError> {
-        let server_c = CString::new(server).map_err(|_| AkonError::Vpn(VpnError::ConnectionFailed {
-            reason: "Invalid server URL".to_string(),
-        }))?;
+    pub fn connect(
+        &mut self,
+        server: &str,
+        _username: &str,
+        _password: &str,
+    ) -> Result<(), AkonError> {
+        let server_c = CString::new(server).map_err(|_| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
+                reason: "Invalid server URL".to_string(),
+            })
+        })?;
 
         // Parse the server URL
         let ret = unsafe { bindings::openconnect_parse_url(self.vpninfo, server_c.as_ptr()) };
@@ -169,7 +176,10 @@ impl OpenConnectConnection {
     }
 
     /// Token unlock callback (called when OpenConnect needs a new token)
-    unsafe extern "C" fn unlock_token_callback(tokdata: *mut c_void, new_tok: *const c_char) -> c_int {
+    unsafe extern "C" fn unlock_token_callback(
+        tokdata: *mut c_void,
+        new_tok: *const c_char,
+    ) -> c_int {
         if tokdata.is_null() {
             return -1; // Error
         }

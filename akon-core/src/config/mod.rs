@@ -48,7 +48,11 @@ impl VpnConfig {
         }
 
         // Basic hostname validation
-        if !self.server.chars().all(|c| c.is_alphanumeric() || c == '.' || c == '-') {
+        if !self
+            .server
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '.' || c == '-')
+        {
             return Err("Server contains invalid characters".to_string());
         }
 

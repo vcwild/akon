@@ -31,7 +31,10 @@ impl OtpSecret {
     pub fn validate_base32(&self) -> Result<(), crate::error::OtpError> {
         // Basic validation - check for valid Base32 characters
         let secret = self.expose();
-        if secret.chars().all(|c| c.is_ascii_alphanumeric() || c == '=' || c == '/') {
+        if secret
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '=' || c == '/')
+        {
             Ok(())
         } else {
             Err(crate::error::OtpError::InvalidBase32)

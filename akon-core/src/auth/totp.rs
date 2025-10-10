@@ -3,10 +3,10 @@
 //! Implements RFC 6238 TOTP using the totp-lite crate for secure
 //! OTP token generation from stored secrets.
 
-use totp_lite::{Sha1, Sha256, Sha512};
 use crate::error::{AkonError, OtpError};
 use crate::types::TotpToken;
 use base32::Alphabet;
+use totp_lite::{Sha1, Sha256, Sha512};
 
 /// Hash algorithm for TOTP
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,7 +23,11 @@ impl Default for HashAlgorithm {
 }
 
 /// Generate a TOTP token from a Base32-encoded secret
-pub fn generate_totp(secret: &str, algorithm: HashAlgorithm, digits: u32) -> Result<TotpToken, AkonError> {
+pub fn generate_totp(
+    secret: &str,
+    algorithm: HashAlgorithm,
+    digits: u32,
+) -> Result<TotpToken, AkonError> {
     // Validate the secret is valid Base32
     if !is_valid_base32(secret) {
         return Err(AkonError::Otp(OtpError::InvalidBase32));
@@ -43,9 +47,15 @@ pub fn generate_totp(secret: &str, algorithm: HashAlgorithm, digits: u32) -> Res
         .as_secs();
 
     let token = match algorithm {
-        HashAlgorithm::Sha1 => totp_lite::totp_custom::<Sha1>(time_step, digits, &secret_bytes, current_time),
-        HashAlgorithm::Sha256 => totp_lite::totp_custom::<Sha256>(time_step, digits, &secret_bytes, current_time),
-        HashAlgorithm::Sha512 => totp_lite::totp_custom::<Sha512>(time_step, digits, &secret_bytes, current_time),
+        HashAlgorithm::Sha1 => {
+            totp_lite::totp_custom::<Sha1>(time_step, digits, &secret_bytes, current_time)
+        }
+        HashAlgorithm::Sha256 => {
+            totp_lite::totp_custom::<Sha256>(time_step, digits, &secret_bytes, current_time)
+        }
+        HashAlgorithm::Sha512 => {
+            totp_lite::totp_custom::<Sha512>(time_step, digits, &secret_bytes, current_time)
+        }
     };
 
     Ok(TotpToken::new(token))
@@ -58,9 +68,8 @@ pub fn generate_totp_default(secret: &str) -> Result<TotpToken, AkonError> {
 
 /// Validate that a string contains only valid Base32 characters
 fn is_valid_base32(s: &str) -> bool {
-    s.chars().all(|c| {
-        c.is_ascii_uppercase() || c.is_ascii_digit() || c == '='
-    })
+    s.chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '=')
 }
 
 #[cfg(test)]
@@ -90,7 +99,10 @@ mod tests {
 
         for secret in invalid_secrets {
             let result = generate_totp_default(secret);
-            assert!(matches!(result, Err(AkonError::Otp(OtpError::InvalidBase32))));
+            assert!(matches!(
+                result,
+                Err(AkonError::Otp(OtpError::InvalidBase32))
+            ));
         }
     }
 
@@ -99,7 +111,7 @@ mod tests {
         let valid_secrets = vec![
             "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ",
             "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ=", // With padding
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567", // All valid chars
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567",  // All valid chars
         ];
 
         for secret in valid_secrets {

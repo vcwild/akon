@@ -183,7 +183,10 @@ mod tests {
 
         state.set_error("Test error".to_string());
         assert!(state.is_error());
-        assert_eq!(state.get(), ConnectionState::Error("Test error".to_string()));
+        assert_eq!(
+            state.get(),
+            ConnectionState::Error("Test error".to_string())
+        );
 
         state.set_disconnected();
         assert_eq!(state.get(), ConnectionState::Disconnected);
@@ -193,8 +196,23 @@ mod tests {
     fn test_display() {
         assert_eq!(format!("{}", ConnectionState::Disconnected), "disconnected");
         assert_eq!(format!("{}", ConnectionState::Connecting), "connecting");
-        assert_eq!(format!("{}", ConnectionState::Connected(ConnectionMetadata::new("127.0.0.1:8080".to_string(), "testuser".to_string()))), "connected");
-        assert_eq!(format!("{}", ConnectionState::Disconnecting), "disconnecting");
-        assert_eq!(format!("{}", ConnectionState::Error("test".to_string())), "error: test");
+        assert_eq!(
+            format!(
+                "{}",
+                ConnectionState::Connected(ConnectionMetadata::new(
+                    "127.0.0.1:8080".to_string(),
+                    "testuser".to_string()
+                ))
+            ),
+            "connected"
+        );
+        assert_eq!(
+            format!("{}", ConnectionState::Disconnecting),
+            "disconnecting"
+        );
+        assert_eq!(
+            format!("{}", ConnectionState::Error("test".to_string())),
+            "error: test"
+        );
     }
 }

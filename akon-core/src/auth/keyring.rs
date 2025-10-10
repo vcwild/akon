@@ -3,8 +3,8 @@
 //! Uses the system keyring (GNOME Keyring on Linux) to store and retrieve
 //! sensitive VPN credentials securely.
 
-use keyring::Entry;
 use crate::error::{AkonError, KeyringError};
+use keyring::Entry;
 
 /// Service name used for storing credentials in the keyring
 const SERVICE_NAME: &str = "akon-vpn";
@@ -14,7 +14,8 @@ pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {
     let entry = Entry::new(SERVICE_NAME, username)
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
 
-    entry.set_password(secret)
+    entry
+        .set_password(secret)
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
 
     Ok(())
@@ -25,7 +26,8 @@ pub fn retrieve_otp_secret(username: &str) -> Result<String, AkonError> {
     let entry = Entry::new(SERVICE_NAME, username)
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
 
-    entry.get_password()
+    entry
+        .get_password()
         .map_err(|_| AkonError::Keyring(KeyringError::RetrieveFailed))
 }
 

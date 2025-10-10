@@ -1,16 +1,13 @@
 //! Unit tests for error types and conversions
 
-use akon_core::error::{AkonError, ConfigError, KeyringError, VpnError, OtpError};
+use akon_core::error::{AkonError, ConfigError, KeyringError, OtpError, VpnError};
 
 #[test]
 fn test_config_error_display() {
     let error = ConfigError::InvalidUrl {
         url: "invalid-url".to_string(),
     };
-    assert_eq!(
-        error.to_string(),
-        "Invalid VPN server URL: invalid-url"
-    );
+    assert_eq!(error.to_string(), "Invalid VPN server URL: invalid-url");
 }
 
 #[test]
@@ -52,7 +49,8 @@ fn test_akon_error_from_io() {
 #[test]
 fn test_akon_error_from_toml() {
     // Create a toml error by parsing invalid TOML
-    let toml_error: toml::de::Error = toml::from_str::<serde_json::Value>("invalid toml").unwrap_err();
+    let toml_error: toml::de::Error =
+        toml::from_str::<serde_json::Value>("invalid toml").unwrap_err();
     let akon_error: AkonError = toml_error.into();
     assert!(matches!(akon_error, AkonError::Toml(_)));
 }

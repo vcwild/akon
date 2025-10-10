@@ -21,7 +21,10 @@ fn test_empty_server() {
 fn test_invalid_server_characters() {
     let config = VpnConfig::new("server!".to_string(), 443, "testuser".to_string());
     assert!(config.validate().is_err());
-    assert_eq!(config.validate().unwrap_err(), "Server contains invalid characters");
+    assert_eq!(
+        config.validate().unwrap_err(),
+        "Server contains invalid characters"
+    );
 }
 
 #[test]
@@ -56,12 +59,20 @@ fn test_valid_config_with_optional_fields() {
 
 #[test]
 fn test_server_with_dashes_and_dots() {
-    let config = VpnConfig::new("vpn-server.example.com".to_string(), 443, "testuser".to_string());
+    let config = VpnConfig::new(
+        "vpn-server.example.com".to_string(),
+        443,
+        "testuser".to_string(),
+    );
     assert!(config.validate().is_ok());
 }
 
 #[test]
 fn test_server_with_numbers() {
-    let config = VpnConfig::new("vpn123.example.com".to_string(), 443, "testuser".to_string());
+    let config = VpnConfig::new(
+        "vpn123.example.com".to_string(),
+        443,
+        "testuser".to_string(),
+    );
     assert!(config.validate().is_ok());
 }
