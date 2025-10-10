@@ -12,8 +12,13 @@ const CONFIG_FILE_NAME: &str = "config.toml";
 
 /// Get the default configuration directory
 ///
-/// Returns ~/.config/akon on Linux
+/// Returns ~/.config/akon on Linux, or AKON_CONFIG_DIR environment variable if set
 pub fn get_config_dir() -> Result<PathBuf, AkonError> {
+    // Allow tests to override config directory via environment variable
+    if let Ok(config_dir) = std::env::var("AKON_CONFIG_DIR") {
+        return Ok(PathBuf::from(config_dir));
+    }
+
     let home = std::env::var("HOME")
         .map_err(|_| AkonError::Config(ConfigError::IoError { message: "HOME environment variable not set".to_string() }))?;
 

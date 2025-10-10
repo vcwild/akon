@@ -10,7 +10,7 @@
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- **[Story]**: Which user story this task belongs to (e.g., US1, US2)
+- **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
 
 ---
@@ -20,7 +20,7 @@
 **Purpose**: Project initialization and basic structure
 
 - [x] T001 Create Cargo workspace structure with binary crate (`src/`) and library crate (`akon-core/`)
-- [ ] T002 Initialize Cargo.toml with workspace members and shared dependencies (secrecy, thiserror, anyhow, serde, toml)
+- [x] T002 Initialize Cargo.toml with workspace members and shared dependencies (secrecy, thiserror, anyhow, serde, toml)
 - [x] T003 [P] Create build.rs for bindgen FFI bindings to libopenconnect in `akon-core/`
 - [x] T004 [P] Setup .cargo/config.toml with build configuration for libopenconnect linkage
 - [x] T005 [P] Configure clippy, rustfmt, and .gitignore for Rust project
@@ -38,7 +38,7 @@
 - [x] T008 [P] Implement Secret type wrappers in `akon-core/src/types.rs` (OtpSecret, TotpToken using secrecy::Secret<T>)
 - [x] T009 [P] Setup tracing + tracing-journald logging infrastructure in `akon-core/src/lib.rs`
 - [x] T010 [P] Create clap CLI structure in `src/main.rs` with command routing (setup, vpn, get-password subcommands)
-- [ ] T011 Generate OpenConnect FFI bindings via build.rs (validate libopenconnect headers available) **[BLOCKED: libopenconnect not installed]**
+- [x] T011 Generate OpenConnect FFI bindings via build.rs (validate libopenconnect headers available)
 - [x] T012 [P] Write unit tests for error type conversions and exit code mapping in `akon-core/src/error.rs`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
@@ -53,23 +53,23 @@
 
 ### Tests for User Story 1 (TDD - Write First, Ensure Fail)
 
-- [ ] T013 [P] [US1] Unit test for VpnConfig validation in `akon-core/tests/config_tests.rs` (test valid/invalid URLs, empty username, invalid port)
-- [ ] T014 [P] [US1] Unit test for OtpSecret Base32 validation in `akon-core/tests/auth_tests.rs` (test valid Base32, invalid characters, wrong length)
-- [ ] T015 [P] [US1] Integration test for keyring store/retrieve in `tests/integration/keyring_tests.rs` (requires GNOME Keyring mock or D-Bus mock)
-- [ ] T016 [US1] Integration test for setup command flow in `tests/integration/setup_tests.rs` (test overwrite confirmation, keyring lock detection)
+- [x] T013 [P] [US1] Unit test for VpnConfig validation in `akon-core/tests/config_tests.rs` (test valid/invalid URLs, empty username, invalid port)
+- [x] T014 [P] [US1] Unit test for OtpSecret Base32 validation in `akon-core/tests/auth_tests.rs` (test valid Base32, invalid characters, wrong length)
+- [x] T015 [P] [US1] Integration test for keyring store/retrieve in `tests/integration/keyring_tests.rs` (requires GNOME Keyring mock or D-Bus mock)
+- [x] T016 [US1] Integration test for setup command flow in `tests/integration/setup_tests.rs` (test overwrite confirmation, keyring lock detection)
 
 ### Implementation for User Story 1
 
-- [ ] T017 [P] [US1] Implement VpnConfig struct with serde derives in `akon-core/src/config/mod.rs`
-- [ ] T018 [P] [US1] Implement VpnConfig::validate() method in `akon-core/src/config/mod.rs`
-- [ ] T019 [P] [US1] Implement TOML config file I/O (load, save) in `akon-core/src/config/toml_config.rs`
-- [ ] T020 [P] [US1] Implement OtpSecret struct with Base32 validation in `akon-core/src/auth/mod.rs`
-- [ ] T021 [US1] Implement keyring operations (store, retrieve, detect existing) in `akon-core/src/auth/keyring.rs` using secret-service crate
-- [ ] T022 [US1] Implement setup command in `src/cli/setup.rs` (interactive prompts, validation, keyring + config save)
-- [ ] T023 [US1] Add overwrite confirmation logic to setup command (detect existing credentials, prompt "Overwrite existing setup? (y/N)")
-- [ ] T024 [US1] Add keyring availability check and graceful error handling in setup command
-- [ ] T025 [US1] Ensure all logging in setup command sanitizes sensitive values (no OTP secrets in logs)
-- [ ] T026 [US1] Run integration tests for US1 to validate implementation
+- [x] T017 [P] [US1] Implement VpnConfig struct with serde derives in `akon-core/src/config/mod.rs`
+- [x] T018 [P] [US1] Implement VpnConfig::validate() method in `akon-core/src/config/mod.rs`
+- [x] T019 [P] [US1] Implement TOML config file I/O (load, save) in `akon-core/src/config/toml_config.rs`
+- [x] T020 [P] [US1] Implement OtpSecret struct with Base32 validation in `akon-core/src/auth/mod.rs`
+- [x] T021 [US1] Implement keyring operations (store, retrieve, detect existing) in `akon-core/src/auth/keyring.rs` using secret-service crate
+- [x] T022 [US1] Implement setup command in `src/cli/setup.rs` (interactive prompts, validation, keyring + config save)
+- [x] T023 [US1] Add overwrite confirmation logic to setup command (detect existing credentials, prompt "Overwrite existing setup? (y/N)")
+- [x] T024 [US1] Add keyring availability check and graceful error handling in setup command
+- [x] T025 [US1] Ensure all logging in setup command sanitizes sensitive values (no OTP secrets in logs)
+- [x] T026 [US1] Run integration tests for US1 to validate implementation
 
 **Checkpoint**: User Story 1 complete - users can run `akon setup` and credentials are securely stored
 
@@ -83,27 +83,27 @@
 
 ### Tests for User Story 2 (TDD - Write First, Ensure Fail)
 
-- [ ] T027 [P] [US2] Unit test for TOTP generation in `akon-core/tests/auth_tests.rs` (test RFC 6238 compliance, 30s time step, HMAC-SHA1/SHA256)
-- [ ] T028 [P] [US2] Unit test for ConnectionState transitions in `akon-core/tests/vpn_tests.rs` (test disconnected → connecting → connected → error states)
-- [ ] T029 [P] [US2] Integration test for OpenConnect FFI wrapper in `tests/integration/openconnect_tests.rs` (mock or stub FFI calls)
-- [ ] T030 [US2] Integration test for daemon spawn and IPC in `tests/integration/daemon_tests.rs` (test parent blocks until child signals, Unix socket communication)
-- [ ] T031 [US2] System test for vpn on command in `tests/integration/vpn_on_tests.rs` (requires mock VPN server or integration test environment)
+- [x] T027 [P] [US2] Unit test for TOTP generation in `akon-core/tests/auth_tests.rs` (test RFC 6238 compliance, 30s time step, HMAC-SHA1/SHA256)
+- [x] T028 [P] [US2] Unit test for ConnectionState transitions in `akon-core/tests/vpn_tests.rs` (test disconnected → connecting → connected → error states)
+- [x] T029 [P] [US2] Integration test for OpenConnect FFI wrapper in `tests/integration/openconnect_tests.rs` (mock or stub FFI calls)
+- [x] T030 [US2] Integration test for daemon spawn and IPC in `tests/integration/daemon_tests.rs` (test parent blocks until child signals, Unix socket communication)
+- [x] T031 [US2] System test for vpn on command in `tests/integration/vpn_on_tests.rs` (requires mock VPN server or integration test environment)
 
 ### Implementation for User Story 2
 
-- [ ] T032 [P] [US2] Implement TOTP generation in `akon-core/src/auth/totp.rs` using totp-lite crate (RFC 6238, 30s steps, HMAC-SHA1/SHA256)
-- [ ] T033 [P] [US2] Implement ConnectionState enum and state machine in `akon-core/src/vpn/state.rs` (with Arc<Mutex<ConnectionState>> for sharing)
-- [ ] T034 [US2] Implement OpenConnect FFI safe wrappers in `akon-core/src/vpn/openconnect.rs` (connection establishment, OTP callback, error mapping)
-- [ ] T035 [US2] Implement daemon process management in `src/daemon/process.rs` (daemonize crate, PID file handling)
-- [ ] T036 [US2] Implement Unix socket IPC for daemon communication in `src/daemon/ipc.rs` (parent-child signals, connection status messages)
-- [ ] T037 [US2] Implement vpn on command in `src/cli/vpn.rs` (load config, retrieve OTP secret, generate token, spawn daemon, block until connected)
-- [ ] T038 [US2] Add idempotency check to vpn on command (detect existing daemon via PID file, return success if already connected)
-- [ ] T039 [US2] Implement error category distinction in vpn on command (authentication vs network vs configuration errors per FR-009)
-- [ ] T040 [US2] Add exit code mapping (0=success, 1=auth/network failure, 2=config error)
-- [ ] T041 [US2] Implement vpn off command in `src/cli/vpn.rs` (graceful daemon shutdown, cleanup PID file and Unix socket)
-- [ ] T042 [US2] Add idempotency to vpn off command (handle already disconnected state gracefully)
-- [ ] T043 [US2] Ensure all logging sanitizes OTP tokens (use secrecy::Secret<T>, no ExposeSecret in log calls)
-- [ ] T044 [US2] Run integration and system tests for US2 to validate implementation
+- [x] T032 [P] [US2] Implement TOTP generation in `akon-core/src/auth/totp.rs` using totp-lite crate (RFC 6238, 30s steps, HMAC-SHA1/SHA256)
+- [x] T033 [P] [US2] Implement ConnectionState enum and state machine in `akon-core/src/vpn/state.rs` (with Arc<Mutex<ConnectionState>> for sharing)
+- [x] T034 [US2] Implement OpenConnect FFI safe wrappers in `akon-core/src/vpn/openconnect.rs` (connection establishment, OTP callback, error mapping)
+- [x] T035 [US2] Implement daemon process management in `src/daemon/process.rs` (daemonize crate, PID file handling)
+- [x] T036 [US2] Implement Unix socket IPC for daemon communication in `src/daemon/ipc.rs` (parent-child signals, connection status messages)
+- [x] T037 [US2] Implement vpn on command in `src/cli/vpn.rs` (load config, retrieve OTP secret, generate token, spawn daemon, block until connected)
+- [x] T041 [US2] Implement vpn off command in `src/cli/vpn.rs` (graceful daemon shutdown, cleanup PID file and Unix socket)
+- [x] T042 [US2] Add idempotency to vpn off command (handle already disconnected state gracefully)
+- [x] T038 [US2] Add idempotency check to vpn on command (detect existing daemon via PID file, return success if already connected)
+- [x] T039 [US2] Implement error category distinction in vpn on command (authentication vs network vs configuration errors per FR-009)
+- [x] T040 [US2] Add exit code mapping (0=success, 1=auth/network failure, 2=config error)
+- [x] T043 [US2] Ensure all logging sanitizes OTP tokens (use secrecy::Secret<T>, no ExposeSecret in log calls)
+- [x] T044 [US2] Run integration and system tests for US2 to validate implementation
 
 **Checkpoint**: User Story 2 complete - users can run `akon vpn on` and `akon vpn off` to manage VPN connection
 
@@ -111,21 +111,21 @@
 
 ## Phase 5: User Story 3 - Manual OTP Generation for External Use (Priority: P2)
 
-**Goal**: Enable users to generate OTP tokens for manual use outside the CLI (browser login, troubleshooting)
+**Goal**: Enable users to generate OTP tokens for use outside the CLI (browser login, troubleshooting)
 
 **Independent Test**: After setup, run `akon get-password` → verify only 6-8 digit token on stdout → pipe to another command → verify no formatting noise
 
 ### Tests for User Story 3 (TDD - Write First, Ensure Fail)
 
-- [ ] T045 [P] [US3] Unit test for get-password command output format in `tests/unit/get_password_tests.rs` (test stdout only contains token, errors go to stderr)
-- [ ] T046 [US3] Integration test for get-password in `tests/integration/get_password_tests.rs` (test with missing keyring entry, test piping behavior)
+- [x] T045 [P] [US3] Unit test for get-password command output format in `tests/unit/get_password_tests.rs` (test stdout only contains token, errors go to stderr)
+- [x] T046 [US3] Integration test for get-password in `tests/integration/get_password_tests.rs` (test with missing keyring entry, test piping behavior)
 
 ### Implementation for User Story 3
 
-- [ ] T047 [US3] Implement get-password command in `src/cli/get_password.rs` (retrieve OTP secret, generate token, output to stdout only)
-- [ ] T048 [US3] Ensure errors written to stderr (not stdout) for pipe-friendly behavior
-- [ ] T049 [US3] Add exit code handling (0=success, 1=keyring error)
-- [ ] T050 [US3] Run integration tests for US3 to validate implementation
+- [x] T047 [US3] Implement get-password command in `src/cli/get_password.rs` (retrieve OTP secret, generate token, output to stdout only)
+- [x] T048 [US3] Ensure errors written to stderr (not stdout) for pipe-friendly behavior
+- [x] T049 [US3] Add exit code handling (0=success, 1=keyring error)
+- [x] T050 [US3] Run integration tests for US3 to validate implementation
 
 **Checkpoint**: User Story 3 complete - users can run `akon get-password` for manual OTP generation
 
@@ -139,7 +139,7 @@
 
 ### Tests for User Story 4 (TDD - Write First, Ensure Fail)
 
-- [ ] T051 [P] [US4] Integration test for vpn status command in `tests/integration/vpn_status_tests.rs` (test connected state, disconnected state, daemon not running)
+- [x] T051 [P] [US4] Integration test for vpn status command in `tests/integration/vpn_status_tests.rs` (test connected state, disconnected state, daemon not running)
 
 ### Implementation for User Story 4
 

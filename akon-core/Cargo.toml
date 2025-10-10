@@ -3,6 +3,9 @@ edition = "2021"
 name = "akon-core"
 version = "0.1.0"
 
+[lints.rust]
+dead_code = "deny"
+
 [dependencies]
 # Workspace dependencies
 anyhow.workspace = true

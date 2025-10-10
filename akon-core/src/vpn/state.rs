@@ -4,9 +4,56 @@
 //! provides thread-safe state tracking.
 
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Connection metadata
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ConnectionMetadata {
+    /// Server endpoint
+    pub server: String,
+    /// Connection start time (Unix timestamp)
+    pub connected_at: u64,
+    /// Username
+    pub username: String,
+}
+
+impl ConnectionMetadata {
+    /// Create new connection metadata
+    pub fn new(server: String, username: String) -> Self {
+        Self {
+            server,
+            connected_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            username,
+        }
+    }
+
+    /// Calculate uptime in seconds
+    pub fn uptime_seconds(&self) -> u64 {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        now.saturating_sub(self.connected_at)
+    }
+
+    /// Format uptime as human-readable string
+    pub fn uptime_display(&self) -> String {
+        let seconds = self.uptime_seconds();
+        if seconds < 60 {
+            format!("{}s", seconds)
+        } else if seconds < 3600 {
+            format!("{}m {}s", seconds / 60, seconds % 60)
+        } else {
+            format!("{}h {}m", seconds / 3600, (seconds % 3600) / 60)
+        }
+    }
+}
 
 /// VPN connection states
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ConnectionState {
     /// Not connected
     Disconnected,
@@ -14,8 +61,8 @@ pub enum ConnectionState {
     /// Attempting to establish connection
     Connecting,
 
-    /// Successfully connected
-    Connected,
+    /// Successfully connected with metadata
+    Connected(ConnectionMetadata),
 
     /// Connection failed with an error
     Error(String),
@@ -35,7 +82,7 @@ impl std::fmt::Display for ConnectionState {
         match self {
             ConnectionState::Disconnected => write!(f, "disconnected"),
             ConnectionState::Connecting => write!(f, "connecting"),
-            ConnectionState::Connected => write!(f, "connected"),
+            ConnectionState::Connected(_) => write!(f, "connected"),
             ConnectionState::Error(msg) => write!(f, "error: {}", msg),
             ConnectionState::Disconnecting => write!(f, "disconnecting"),
         }
@@ -64,7 +111,7 @@ impl SharedConnectionState {
 
     /// Check if currently connected
     pub fn is_connected(&self) -> bool {
-        matches!(self.get(), ConnectionState::Connected)
+        matches!(self.get(), ConnectionState::Connected(_))
     }
 
     /// Check if currently connecting
@@ -83,8 +130,9 @@ impl SharedConnectionState {
     }
 
     /// Transition to connected state
-    pub fn set_connected(&self) {
-        self.set(ConnectionState::Connected);
+    pub fn set_connected(&self, server: String, username: String) {
+        let metadata = ConnectionMetadata::new(server, username);
+        self.set(ConnectionState::Connected(metadata));
     }
 
     /// Transition to disconnected state
@@ -124,9 +172,14 @@ mod tests {
         assert_eq!(state.get(), ConnectionState::Connecting);
         assert!(state.is_connecting());
 
-        state.set_connected();
-        assert_eq!(state.get(), ConnectionState::Connected);
+        state.set_connected("127.0.0.1:8080".to_string(), "testuser".to_string());
         assert!(state.is_connected());
+        if let ConnectionState::Connected(metadata) = state.get() {
+            assert_eq!(metadata.server, "127.0.0.1:8080");
+            assert_eq!(metadata.username, "testuser");
+        } else {
+            panic!("Expected Connected state");
+        }
 
         state.set_error("Test error".to_string());
         assert!(state.is_error());
@@ -140,7 +193,7 @@ mod tests {
     fn test_display() {
         assert_eq!(format!("{}", ConnectionState::Disconnected), "disconnected");
         assert_eq!(format!("{}", ConnectionState::Connecting), "connecting");
-        assert_eq!(format!("{}", ConnectionState::Connected), "connected");
+        assert_eq!(format!("{}", ConnectionState::Connected(ConnectionMetadata::new("127.0.0.1:8080".to_string(), "testuser".to_string()))), "connected");
         assert_eq!(format!("{}", ConnectionState::Disconnecting), "disconnecting");
         assert_eq!(format!("{}", ConnectionState::Error("test".to_string())), "error: test");
     }
