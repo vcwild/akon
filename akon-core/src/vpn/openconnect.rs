@@ -67,6 +67,27 @@ impl OpenConnectConnection {
         })
     }
 
+    /// Set VPN protocol
+    pub fn set_protocol(&mut self, protocol: &str) -> Result<(), AkonError> {
+        let protocol_c = CString::new(protocol).map_err(|_| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
+                reason: "Invalid protocol name".to_string(),
+            })
+        })?;
+
+        let ret = unsafe {
+            bindings::openconnect_set_protocol(self.vpninfo, protocol_c.as_ptr())
+        };
+
+        if ret != 0 {
+            return Err(AkonError::Vpn(VpnError::ConnectionFailed {
+                reason: format!("Failed to set protocol: {}", protocol),
+            }));
+        }
+
+        Ok(())
+    }
+
     /// Set OTP secret for TOTP authentication
     pub fn set_otp_secret(&mut self, secret: OtpSecret) {
         let secret_box = Box::new(secret);
@@ -92,12 +113,23 @@ impl OpenConnectConnection {
         server: &str,
         _username: &str,
         _password: &str,
+        no_dtls: bool,
     ) -> Result<(), AkonError> {
         let server_c = CString::new(server).map_err(|_| {
             AkonError::Vpn(VpnError::ConnectionFailed {
                 reason: "Invalid server URL".to_string(),
             })
         })?;
+
+        // Disable DTLS if requested
+        if no_dtls {
+            let ret = unsafe { bindings::openconnect_disable_dtls(self.vpninfo) };
+            if ret != 0 {
+                return Err(AkonError::Vpn(VpnError::ConnectionFailed {
+                    reason: "Failed to disable DTLS".to_string(),
+                }));
+            }
+        }
 
         // Parse the server URL
         let ret = unsafe { bindings::openconnect_parse_url(self.vpninfo, server_c.as_ptr()) };
@@ -135,8 +167,10 @@ impl OpenConnectConnection {
             }));
         }
 
-        // Setup DTLS (optional, but recommended)
-        let _ = unsafe { bindings::openconnect_setup_dtls(self.vpninfo, 60) };
+        // Setup DTLS (optional, but recommended) - only if not disabled
+        if !no_dtls {
+            let _ = unsafe { bindings::openconnect_setup_dtls(self.vpninfo, 60) };
+        }
 
         Ok(())
     }

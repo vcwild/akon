@@ -49,14 +49,14 @@ pub fn hmac_sha1(key: &[u8], message: &[u8]) -> [u8; 20] {
 
     // Step 3: Compute inner hash
     let mut inner = Sha1::new();
-    inner.update(&ipad_key);
+    inner.update(ipad_key);
     inner.update(message);
     let inner_hash = inner.finalize();
 
     // Step 4: Compute outer hash
     let mut outer = Sha1::new();
-    outer.update(&opad_key);
-    outer.update(&inner_hash);
+    outer.update(opad_key);
+    outer.update(inner_hash);
     let outer_hash = outer.finalize();
 
     // Convert to fixed-size array

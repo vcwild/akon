@@ -4,6 +4,8 @@
 //! in the user's configuration directory.
 
 use crate::config::VpnConfig;
+#[cfg(test)]
+use crate::config::VpnProtocol;
 use crate::error::{AkonError, ConfigError};
 use std::path::{Path, PathBuf};
 
@@ -130,8 +132,10 @@ mod tests {
             server: "vpn.example.com".to_string(),
             port: 4443,
             username: "testuser".to_string(),
+            protocol: VpnProtocol::default(),
             realm: Some("realm1".to_string()),
             timeout: Some(60),
+            no_dtls: false,
         };
 
         // Save config

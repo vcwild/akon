@@ -77,7 +77,7 @@ pub fn retrieve_pin(username: &str) -> Result<Pin, AkonError> {
         .get_password()
         .map_err(|_| AkonError::Keyring(KeyringError::PinNotFound))?;
 
-    Pin::new(pin_str).map_err(|e| AkonError::Otp(e))
+    Pin::new(pin_str).map_err(AkonError::Otp)
 }
 
 /// Check if a PIN exists in the keyring for the given username

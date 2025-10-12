@@ -179,6 +179,7 @@ fn run_daemon(
 fn wait_for_connection(connection_state: &SharedConnectionState) -> Result<(), AkonError> {
     let mut attempts = 0;
     let max_attempts = 30; // 30 seconds timeout
+    let step = 5;
 
     while attempts < max_attempts {
         match connection_state.get() {
@@ -189,8 +190,9 @@ fn wait_for_connection(connection_state: &SharedConnectionState) -> Result<(), A
                 }));
             }
             _ => {
-                thread::sleep(Duration::from_secs(1));
-                attempts += 1;
+                thread::sleep(Duration::from_secs(step));
+                attempts += step;
+                println!("Waiting for VPN connection... ({}s)", attempts);
             }
         }
     }

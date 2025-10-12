@@ -6,6 +6,49 @@ use serde::{Deserialize, Serialize};
 
 pub mod toml_config;
 
+/// VPN protocol type
+///
+/// Supported VPN protocols for OpenConnect
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VpnProtocol {
+    /// Cisco AnyConnect SSL VPN
+    AnyConnect,
+    /// Palo Alto Networks GlobalProtect
+    GlobalProtect,
+    /// Juniper Network Connect
+    NC,
+    /// Pulse Connect Secure
+    Pulse,
+    /// F5 Big-IP SSL VPN (default)
+    F5,
+    /// Fortinet FortiGate SSL VPN
+    Fortinet,
+    /// Array Networks SSL VPN
+    Array,
+}
+
+impl Default for VpnProtocol {
+    fn default() -> Self {
+        Self::F5
+    }
+}
+
+impl VpnProtocol {
+    /// Get the protocol name as expected by OpenConnect
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::AnyConnect => "anyconnect",
+            Self::GlobalProtect => "gp",
+            Self::NC => "nc",
+            Self::Pulse => "pulse",
+            Self::F5 => "f5",
+            Self::Fortinet => "fortinet",
+            Self::Array => "array",
+        }
+    }
+}
+
 /// VPN configuration structure
 ///
 /// Contains all non-sensitive VPN connection parameters.
@@ -21,11 +64,19 @@ pub struct VpnConfig {
     /// Username for VPN authentication
     pub username: String,
 
+    /// VPN protocol to use (default: AnyConnect)
+    #[serde(default)]
+    pub protocol: VpnProtocol,
+
     /// Optional realm for multi-realm VPN servers
     pub realm: Option<String>,
 
     /// Connection timeout in seconds
     pub timeout: Option<u32>,
+
+    /// Disable DTLS (Datagram TLS) and use only TCP/TLS
+    #[serde(default)]
+    pub no_dtls: bool,
 }
 
 impl VpnConfig {
@@ -35,8 +86,10 @@ impl VpnConfig {
             server,
             port,
             username,
+            protocol: VpnProtocol::default(),
             realm: None,
             timeout: None,
+            no_dtls: false,
         }
     }
 
@@ -83,8 +136,10 @@ impl Default for VpnConfig {
             server: String::new(),
             port: 443,
             username: String::new(),
+            protocol: VpnProtocol::default(),
             realm: None,
             timeout: Some(30),
+            no_dtls: false,
         }
     }
 }
