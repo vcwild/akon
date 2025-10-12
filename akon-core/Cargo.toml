@@ -21,6 +21,7 @@ tracing-subscriber.workspace = true
 tracing.workspace = true
 data-encoding = "2.9.0"
 sha1 = "0.10.6"
+libc = "0.2"
 
 [build-dependencies]
 bindgen.workspace = true

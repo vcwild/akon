@@ -10,6 +10,7 @@ use akon_core::auth::password::generate_password;
 use akon_core::config::toml_config::load_config;
 use akon_core::error::{AkonError, VpnError};
 use akon_core::vpn::state::{ConnectionMetadata, ConnectionState, SharedConnectionState};
+use tracing::{error, info};
 
 use crate::daemon::ipc::{get_default_socket_path, IpcClient};
 use crate::daemon::process::{get_default_pid_file, DaemonProcess};
@@ -129,12 +130,28 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
 /// Run the daemon process
 fn run_daemon(
     config: &akon_core::config::VpnConfig,
-    _password: &akon_core::types::VpnPassword,
+    password: &akon_core::types::VpnPassword,
     connection_state: &SharedConnectionState,
 ) -> Result<(), AkonError> {
-    // Daemonize the process
+    use akon_core::vpn::openconnect::OpenConnectConnection;
+
+    // Daemonize the process FIRST - before initializing any resources
     let daemon = DaemonProcess::new(get_default_pid_file());
     daemon.daemonize()?;
+
+    // IMPORTANT: After daemonize(), we're in the child process with clean state
+    // Now it's safe to initialize OpenConnect and other resources
+
+    // Initialize OpenConnect SSL library in the child process after fork
+    // This is critical - SSL state doesn't survive fork()
+    info!("Initializing OpenConnect SSL in child process");
+    if let Err(e) = OpenConnectConnection::init_ssl() {
+        let error_msg = format!("Failed to initialize OpenConnect SSL: {}", e);
+        error!("{}", error_msg);
+        connection_state.set_error(error_msg);
+        return Err(e);
+    }
+    info!("OpenConnect SSL initialized successfully");
 
     // Set up IPC server
     let ipc_server =
@@ -150,22 +167,60 @@ fn run_daemon(
     // Update state to connecting
     connection_state.set(ConnectionState::Connecting);
 
-    // TODO: Implement actual VPN connection using OpenConnect
-    // For now, just simulate connection
-    thread::sleep(Duration::from_secs(2));
+    // Create OpenConnect connection AFTER daemonizing
+    // This ensures OpenConnect initializes in the child process with clean state
+    info!("Creating OpenConnect connection...");
+    let mut vpn_conn = match OpenConnectConnection::new() {
+        Ok(conn) => {
+            info!("OpenConnect connection created successfully");
+            conn
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to initialize OpenConnect: {}", e);
+            error!("{}", error_msg);
+            connection_state.set_error(error_msg.clone());
+            return Err(e);
+        }
+    };
 
-    // Create connection metadata
-    let metadata = ConnectionMetadata::new(config.server.clone(), config.username.clone());
-    connection_state.set(ConnectionState::Connected(metadata));
+    // Construct server URL - for F5 and other protocols, OpenConnect can work with just hostname
+    // OpenConnect will add https:// and proper port based on protocol if not specified
+    let server_url = if config.port == 443 {
+        // For standard HTTPS port, use just the hostname - let OpenConnect handle it
+        config.server.clone()
+    } else {
+        // For non-standard ports, include it
+        format!("{}:{}", config.server, config.port)
+    };
 
-    // Keep the daemon running
-    loop {
-        thread::sleep(Duration::from_secs(1));
+    // Connect to VPN (protocol is set inside connect now)
+    match vpn_conn.connect(
+        &server_url,
+        &config.username,
+        password.expose(),
+        config.protocol.as_str(),
+        config.no_dtls,
+    ) {
+        Ok(()) => {
+            let metadata = ConnectionMetadata::new(config.server.clone(), config.username.clone());
+            connection_state.set(ConnectionState::Connected(metadata));
+        }
+        Err(e) => {
+            let error_msg = format!("VPN connection failed: {}", e);
+            connection_state.set_error(error_msg.clone());
+            return Err(e);
+        }
+    }
 
-        // Check if we should disconnect
-        if matches!(connection_state.get(), ConnectionState::Disconnecting) {
-            connection_state.set(ConnectionState::Disconnected);
-            break;
+    // Run main loop
+    match vpn_conn.run_mainloop() {
+        Ok(()) => {
+            connection_state.set_disconnected();
+        }
+        Err(e) => {
+            let error_msg = format!("VPN main loop error: {}", e);
+            connection_state.set_error(error_msg);
+            return Err(e);
         }
     }
 
@@ -178,7 +233,7 @@ fn run_daemon(
 /// Wait for VPN connection to be established
 fn wait_for_connection(connection_state: &SharedConnectionState) -> Result<(), AkonError> {
     let mut attempts = 0;
-    let max_attempts = 30; // 30 seconds timeout
+    let max_attempts = 15; // 15 seconds timeout
     let step = 5;
 
     while attempts < max_attempts {
