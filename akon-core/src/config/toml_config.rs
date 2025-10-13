@@ -15,17 +15,36 @@ const CONFIG_FILE_NAME: &str = "config.toml";
 /// Get the default configuration directory
 ///
 /// Returns ~/.config/akon on Linux, or AKON_CONFIG_DIR environment variable if set
+///
+/// With capability-based execution (CAP_NET_ADMIN), this simply uses $HOME since
+/// the program runs as the actual user. SUDO_USER fallback is kept for compatibility.
 pub fn get_config_dir() -> Result<PathBuf, AkonError> {
     // Allow tests to override config directory via environment variable
     if let Ok(config_dir) = std::env::var("AKON_CONFIG_DIR") {
         return Ok(PathBuf::from(config_dir));
     }
 
-    let home = std::env::var("HOME").map_err(|_| {
-        AkonError::Config(ConfigError::IoError {
-            message: "HOME environment variable not set".to_string(),
-        })
-    })?;
+    // Fallback for sudo execution (not needed with capabilities, but kept for compatibility)
+    let home = if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        // We're running with sudo, get the actual user's home directory
+        std::env::var("SUDO_HOME")
+            .or_else(|_: std::env::VarError| {
+                // SUDO_HOME not set, construct from /home/username
+                Ok::<String, std::env::VarError>(format!("/home/{}", sudo_user))
+            })
+            .map_err(|_| {
+                AkonError::Config(ConfigError::IoError {
+                    message: format!("Failed to determine home directory for user: {}", sudo_user),
+                })
+            })?
+    } else {
+        // Normal execution, use HOME
+        std::env::var("HOME").map_err(|_| {
+            AkonError::Config(ConfigError::IoError {
+                message: "HOME environment variable not set".to_string(),
+            })
+        })?
+    };
 
     let config_dir = PathBuf::from(home).join(".config").join("akon");
     Ok(config_dir)

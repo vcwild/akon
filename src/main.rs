@@ -7,7 +7,6 @@ use akon_core::{error::AkonError, init_logging};
 use clap::{Parser, Subcommand};
 
 mod cli;
-mod daemon;
 
 #[derive(Parser)]
 #[command(name = "akon")]

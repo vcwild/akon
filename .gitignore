@@ -1,5 +1,6 @@
 .github
-
+debug/
+traces/
 # Added by cargo
 
 /target

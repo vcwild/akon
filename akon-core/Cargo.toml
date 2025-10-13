@@ -25,6 +25,7 @@ libc = "0.2"
 
 [build-dependencies]
 bindgen.workspace = true
+cc = "1.0"
 
 [dev-dependencies]
 cargo-tarpaulin = "0.27"
