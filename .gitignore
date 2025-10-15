@@ -1,5 +1,37 @@
 .github
-
+debug/
+traces/
 # Added by cargo
 
 /target
+
+# Rust project
+target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test coverage
+*.profraw
+cobertura.xml
+tarpaulin-report.html
+
+# Build artifacts
+build.rs
+*.so
+*.dylib
+*.dll
+
+# Configuration files that may contain secrets (never commit)
+config.toml
+*.key
+*.pem

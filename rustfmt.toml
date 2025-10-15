@@ -1,0 +1,10 @@
+# Rust code formatting configuration
+edition = "2021"
+hard_tabs = false
+max_width = 100
+newline_style = "Auto"
+remove_nested_parens = true
+reorder_imports = true
+reorder_modules = true
+tab_spaces = 4
+use_small_heuristics = "Default"
