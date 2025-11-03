@@ -34,7 +34,6 @@ fn test_get_password_with_temp_config() {
     // Create test config
     let config_content = r#"
 server = "test.vpn.example.com"
-port = 443
 username = "__akon_get_password_test__"
 timeout = 30
 "#;

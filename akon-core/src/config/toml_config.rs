@@ -149,12 +149,11 @@ mod tests {
 
         let original_config = VpnConfig {
             server: "vpn.example.com".to_string(),
-            port: 4443,
             username: "testuser".to_string(),
             protocol: VpnProtocol::default(),
-            realm: Some("realm1".to_string()),
             timeout: Some(60),
             no_dtls: false,
+            lazy_mode: false,
         };
 
         // Save config
@@ -169,10 +168,9 @@ mod tests {
     #[test]
     fn test_invalid_config_validation() {
         let invalid_configs = vec![
-            VpnConfig::new("".to_string(), 443, "user".to_string()), // Empty server
-            VpnConfig::new("server!".to_string(), 443, "user".to_string()), // Invalid chars
-            VpnConfig::new("server.com".to_string(), 0, "user".to_string()), // Invalid port
-            VpnConfig::new("server.com".to_string(), 443, "".to_string()), // Empty username
+            VpnConfig::new("".to_string(), "user".to_string()), // Empty server
+            VpnConfig::new("server!".to_string(), "user".to_string()), // Invalid chars
+            VpnConfig::new("server.com".to_string(), "".to_string()), // Empty username
         ];
 
         for config in invalid_configs {

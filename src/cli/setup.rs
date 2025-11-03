@@ -8,23 +8,24 @@ use akon_core::{
     error::AkonError,
     types::OtpSecret,
 };
+use colored::Colorize;
 use std::io::{self, Write};
 
 /// Run the setup command
 pub fn run_setup() -> Result<(), AkonError> {
-    println!("🔐 akon VPN Setup");
-    println!("=================");
+    println!("{} {}", "🔐".bright_magenta(), "akon VPN Setup".bright_white().bold());
+    println!("{}", "=================".bright_white());
     println!();
-    println!("This will configure your VPN connection securely.");
-    println!("Credentials will be stored in your system keyring.");
-    println!("Configuration will be saved to ~/.config/akon/config.toml");
+    println!("{}", "This will configure your VPN connection securely.".bright_white());
+    println!("{}", "Credentials will be stored in your system keyring.".dimmed());
+    println!("{}", "Configuration will be saved to ~/.config/akon/config.toml".dimmed());
     println!();
 
     // Check if already configured
     if let Ok(true) = toml_config::config_exists() {
-        println!("⚠️  Existing configuration detected.");
+        println!("{} {}", "⚠".bright_yellow(), "Existing configuration detected.".bright_yellow());
         if !prompt_yes_no("Overwrite existing setup? (y/N)", false)? {
-            println!("Setup cancelled.");
+            println!("{}", "Setup cancelled.".dimmed());
             return Ok(());
         }
         println!();
@@ -51,7 +52,7 @@ pub fn run_setup() -> Result<(), AkonError> {
 
     // Save configuration
     println!();
-    println!("💾 Saving configuration...");
+    println!("{} {}", "💾".bright_cyan(), "Saving configuration...".bright_white());
 
     // Save config to TOML file
     toml_config::save_config(&config)?;
@@ -59,12 +60,12 @@ pub fn run_setup() -> Result<(), AkonError> {
     // Store OTP secret in keyring
     keyring::store_otp_secret(&config.username, otp_secret.expose())?;
 
-    println!("✅ Setup complete!");
+    println!("{} {}", "✅".bright_green(), "Setup complete!".bright_green().bold());
     println!();
-    println!("You can now use:");
-    println!("  akon vpn on     - Connect to VPN");
-    println!("  akon vpn off    - Disconnect from VPN");
-    println!("  akon get-password - Generate OTP token manually");
+    println!("{}", "You can now use:".bright_white());
+    println!("  {} - Connect to VPN", "akon vpn on".bright_cyan());
+    println!("  {} - Disconnect from VPN", "akon vpn off".bright_cyan());
+    println!("  {} - Generate OTP token manually", "akon get-password".bright_cyan());
 
     Ok(())
 }
@@ -92,16 +93,10 @@ fn check_keyring_availability() -> Result<(), AkonError> {
 
 /// Collect VPN configuration interactively
 fn collect_vpn_config() -> Result<VpnConfig, AkonError> {
-    println!("VPN Configuration:");
-    println!("-----------------");
+    println!("{}", "VPN Configuration:".bright_white().bold());
+    println!("{}", "-----------------".bright_white());
 
     let server = prompt_required("VPN Server (hostname or IP)", "vpn.example.com")?;
-    let port: u16 = prompt_required("VPN Port", "443")?.parse().map_err(|_| {
-        AkonError::Config(akon_core::error::ConfigError::ValidationError {
-            message: "Invalid port number".to_string(),
-        })
-    })?;
-
     let username = prompt_required("Username", "")?;
 
     println!();
@@ -125,28 +120,23 @@ fn collect_vpn_config() -> Result<VpnConfig, AkonError> {
         _ => akon_core::config::VpnProtocol::F5, // Default
     };
 
-    let realm = prompt_optional("Realm (optional)", "")?;
     let timeout: Option<u32> = prompt_optional("Connection timeout in seconds (optional)", "30")?
         .parse()
         .ok();
 
-    let realm = if realm.trim().is_empty() {
-        None
-    } else {
-        Some(realm.trim().to_string())
-    };
-
     let no_dtls_input = prompt_optional("Disable DTLS (use TCP only)? (y/N)", "n")?;
     let no_dtls = matches!(no_dtls_input.trim().to_lowercase().as_str(), "y" | "yes");
 
+    let lazy_mode_input = prompt_optional("Enable lazy mode (connect VPN when running akon without arguments)? (y/N)", "n")?;
+    let lazy_mode = matches!(lazy_mode_input.trim().to_lowercase().as_str(), "y" | "yes");
+
     Ok(VpnConfig {
         server,
-        port,
         username,
         protocol,
-        realm,
         timeout,
         no_dtls,
+        lazy_mode,
     })
 }
 
