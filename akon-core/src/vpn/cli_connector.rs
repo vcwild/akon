@@ -281,6 +281,7 @@ impl CliConnector {
         let mut connected = false;
         let mut ip_address = None;
         let mut device = None;
+        let mut authenticating_sent = false; // Track if we've already sent authenticating event
 
         // Read output until connection is established or error occurs
         while let Ok(Some(line)) = reader.next_line().await {
@@ -302,6 +303,13 @@ impl CliConnector {
                     return Err(VpnError::ConnectionFailed {
                         reason: error_msg,
                     });
+                }
+                ConnectionEvent::Authenticating { .. } => {
+                    // Only send the first authenticating event to avoid duplicates
+                    if !authenticating_sent {
+                        let _ = event_sender.send(event.clone());
+                        authenticating_sent = true;
+                    }
                 }
                 _ => {
                     let _ = event_sender.send(event.clone());
