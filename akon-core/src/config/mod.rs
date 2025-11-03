@@ -58,9 +58,6 @@ pub struct VpnConfig {
     /// VPN server hostname or IP address
     pub server: String,
 
-    /// VPN server port (default: 443)
-    pub port: u16,
-
     /// Username for VPN authentication
     pub username: String,
 
@@ -68,28 +65,28 @@ pub struct VpnConfig {
     #[serde(default)]
     pub protocol: VpnProtocol,
 
-    /// Optional realm for multi-realm VPN servers
-    pub realm: Option<String>,
-
     /// Connection timeout in seconds
     pub timeout: Option<u32>,
 
     /// Disable DTLS (Datagram TLS) and use only TCP/TLS
     #[serde(default)]
     pub no_dtls: bool,
+
+    /// Enable lazy mode - running akon without arguments connects to VPN
+    #[serde(default)]
+    pub lazy_mode: bool,
 }
 
 impl VpnConfig {
     /// Create a new VPN configuration
-    pub fn new(server: String, port: u16, username: String) -> Self {
+    pub fn new(server: String, username: String) -> Self {
         Self {
             server,
-            port,
             username,
             protocol: VpnProtocol::default(),
-            realm: None,
             timeout: None,
             no_dtls: false,
+            lazy_mode: false,
         }
     }
 
@@ -107,11 +104,6 @@ impl VpnConfig {
             .all(|c| c.is_alphanumeric() || c == '.' || c == '-')
         {
             return Err("Server contains invalid characters".to_string());
-        }
-
-        // Validate port
-        if self.port == 0 {
-            return Err("Port cannot be zero".to_string());
         }
 
         // Validate username
@@ -134,12 +126,11 @@ impl Default for VpnConfig {
     fn default() -> Self {
         Self {
             server: String::new(),
-            port: 443,
             username: String::new(),
             protocol: VpnProtocol::default(),
-            realm: None,
             timeout: Some(30),
             no_dtls: false,
+            lazy_mode: false,
         }
     }
 }

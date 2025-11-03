@@ -28,6 +28,7 @@ tokio.workspace = true
 # Additional dependencies
 which = "6.0"
 chrono = "0.4"
+colored = "2.1"
 # Local crate
 akon-core = { path = "akon-core" }
 

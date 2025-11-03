@@ -49,9 +49,6 @@ pub enum ConfigError {
     #[error("Invalid VPN server URL: {url}")]
     InvalidUrl { url: String },
 
-    #[error("Invalid port number: {port}")]
-    InvalidPort { port: u16 },
-
     #[error("Missing required configuration field: {field}")]
     MissingField { field: String },
 

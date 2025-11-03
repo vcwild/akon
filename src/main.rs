@@ -10,15 +10,59 @@ mod cli;
 
 #[derive(Parser)]
 #[command(name = "akon")]
-#[command(about = "OTP-Integrated VPN CLI with secure credential management")]
+#[command(about = "VPN automatic authentication tool")]
+#[command(disable_help_subcommand = true)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Setup VPN credentials securely
+    ///
+    /// Interactive wizard to configure VPN connection settings and credentials.
+    ///
+    /// CONFIGURATION FIELDS:
+    ///
+    /// • Server: VPN server hostname or IP address (e.g., vpn.example.com)
+    ///
+    /// • Username: Your VPN account username
+    ///
+    /// • PIN: Numeric PIN for authentication (stored securely in keyring)
+    ///
+    /// • TOTP Secret: Base32-encoded secret for generating time-based one-time passwords
+    ///   (stored securely in keyring)
+    ///
+    /// • Protocol: VPN protocol type
+    ///   - anyconnect: Cisco AnyConnect SSL VPN
+    ///   - gp: Palo Alto Networks GlobalProtect
+    ///   - nc: Juniper Network Connect
+    ///   - pulse: Pulse Connect Secure
+    ///   - f5: F5 Big-IP SSL VPN (default)
+    ///   - fortinet: Fortinet FortiGate SSL VPN
+    ///   - array: Array Networks SSL VPN
+    ///
+    /// • Timeout: Connection timeout in seconds (default: 30)
+    ///
+    /// • No DTLS: Disable DTLS and use only TCP/TLS (default: false)
+    ///   Use this if DTLS is blocked by firewall or causes connection issues
+    ///
+    /// • Lazy Mode: When enabled, running 'akon' without arguments automatically
+    ///   connects to VPN. When disabled, you must use 'akon vpn on' (default: false)
+    ///
+    /// STORAGE:
+    ///
+    /// • Config file: ~/.config/akon/config.toml (non-sensitive settings)
+    /// • Credentials: GNOME Keyring (PIN and TOTP secret, encrypted)
+    ///
+    /// EXAMPLES:
+    ///
+    /// # Run setup wizard
+    /// akon setup
+    ///
+    /// # View this help
+    /// akon setup --help
     Setup,
     /// Manage VPN connection (on/off/status)
     Vpn {
@@ -32,7 +76,11 @@ enum Commands {
 #[derive(Subcommand)]
 enum VpnCommands {
     /// Connect to VPN
-    On,
+    On {
+        /// Force reconnection even if already connected
+        #[arg(short, long)]
+        force: bool,
+    },
     /// Disconnect from VPN
     Off,
     /// Show VPN connection status
@@ -50,13 +98,35 @@ async fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Setup => cli::setup::run_setup(),
-        Commands::Vpn { action } => match action {
-            VpnCommands::On => cli::vpn::run_vpn_on().await,
+        Some(Commands::Setup) => cli::setup::run_setup(),
+        Some(Commands::Vpn { action }) => match action {
+            VpnCommands::On { force } => cli::vpn::run_vpn_on(force).await,
             VpnCommands::Off => cli::vpn::run_vpn_off().await,
             VpnCommands::Status => cli::vpn::run_vpn_status(),
         },
-        Commands::GetPassword => cli::get_password::run_get_password(),
+        Some(Commands::GetPassword) => cli::get_password::run_get_password(),
+        None => {
+            // No command provided - check for lazy mode
+            use akon_core::config::toml_config::load_config;
+            match load_config() {
+                Ok(config) if config.lazy_mode => {
+                    // Lazy mode enabled - run vpn on
+                    cli::vpn::run_vpn_on(false).await
+                }
+                Ok(_) => {
+                    // Config exists but lazy mode disabled - show help
+                    use clap::CommandFactory;
+                    Cli::command().print_help().unwrap();
+                    std::process::exit(2);
+                }
+                Err(_) => {
+                    // No config - show help
+                    use clap::CommandFactory;
+                    Cli::command().print_help().unwrap();
+                    std::process::exit(2);
+                }
+            }
+        }
     };
 
     match result {

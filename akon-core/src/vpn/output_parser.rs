@@ -21,15 +21,24 @@ pub struct OutputParser {
     connect_response_pattern: Regex,
     /// Pattern for "Connected to F5 Session Manager"
     f5_session_pattern: Regex,
+    /// Pattern for SSL/TLS errors
+    ssl_error_pattern: Regex,
+    /// Pattern for certificate validation errors
+    cert_error_pattern: Regex,
+    /// Pattern for TUN device errors
+    tun_error_pattern: Regex,
+    /// Pattern for DNS resolution errors
+    dns_error_pattern: Regex,
 }
 
 impl OutputParser {
     /// Create a new OutputParser with compiled regex patterns
     pub fn new() -> Self {
         Self {
-            tun_configured_pattern: Regex::new(r"Connected\s+(\w+)\s+as\s+(\S+)")
+            // Match both old format "Connected tun0 as X.X.X.X" and new F5 format "Configured as X.X.X.X"
+            tun_configured_pattern: Regex::new(r"(?:Connected\s+(\w+)\s+as|Configured as)\s+(\S+)")
                 .expect("Failed to compile tun_configured pattern"),
-            established_pattern: Regex::new(r"Established connection")
+            established_pattern: Regex::new(r"Established connection|SSL connected|with SSL connected")
                 .expect("Failed to compile established pattern"),
             auth_failed_pattern: Regex::new(r"Failed to authenticate")
                 .expect("Failed to compile auth_failed pattern"),
@@ -39,6 +48,14 @@ impl OutputParser {
                 .expect("Failed to compile connect_response pattern"),
             f5_session_pattern: Regex::new(r"Connected to F5 Session Manager")
                 .expect("Failed to compile f5_session pattern"),
+            ssl_error_pattern: Regex::new(r"(?i)SSL|TLS|connection failure|handshake")
+                .expect("Failed to compile ssl_error pattern"),
+            cert_error_pattern: Regex::new(r"(?i)certificate|cert.*invalid|verification failed")
+                .expect("Failed to compile cert_error pattern"),
+            tun_error_pattern: Regex::new(r"(?i)failed to open tun|tun.*error|no tun device")
+                .expect("Failed to compile tun_error pattern"),
+            dns_error_pattern: Regex::new(r"(?i)cannot resolve|unknown host|name resolution")
+                .expect("Failed to compile dns_error pattern"),
         }
     }
 
@@ -46,12 +63,28 @@ impl OutputParser {
     ///
     /// Returns a ConnectionEvent based on the line content
     pub fn parse_line(&self, line: &str) -> ConnectionEvent {
-        // Check for TUN configuration
+        // Check for TUN configuration - F5 format includes connection confirmation
+        // Example: "Configured as 10.10.62.228, with SSL connected and DTLS disabled"
         if let Some(captures) = self.tun_configured_pattern.captures(line) {
-            let device = captures.get(1).map(|m| m.as_str().to_string()).unwrap();
-            let ip_str = captures.get(2).map(|m| m.as_str()).unwrap();
+            // Group 1 is device (optional for F5 format), Group 2 is IP
+            let device = captures.get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_else(|| "tun".to_string()); // Default for F5 format
 
-            if let Ok(ip) = ip_str.parse::<IpAddr>() {
+            // IP is in group 2 for both formats
+            let ip_str = captures.get(2)
+                .or_else(|| captures.get(1)) // Fallback if only one capture group
+                .map(|m| m.as_str())
+                .unwrap_or("");
+
+            // Extract just the IP address (remove trailing commas, etc.)
+            let ip_clean = ip_str.trim_end_matches(',').trim();
+
+            if let Ok(ip) = ip_clean.parse::<IpAddr>() {
+                // Check if this line also indicates connection is established (F5 format)
+                if line.contains("SSL connected") || line.contains("DTLS") {
+                    return ConnectionEvent::Connected { device, ip };
+                }
                 return ConnectionEvent::TunConfigured { device, ip };
             }
         }
@@ -110,8 +143,47 @@ impl OutputParser {
             };
         }
 
-        // For now, treat all stderr as unknown output
-        // Can be extended with more error patterns
+        // Check for SSL/TLS errors
+        if self.ssl_error_pattern.is_match(line) {
+            return ConnectionEvent::Error {
+                kind: VpnError::NetworkError {
+                    reason: "SSL/TLS connection failure".to_string(),
+                },
+                raw_output: line.to_string(),
+            };
+        }
+
+        // Check for certificate validation errors
+        if self.cert_error_pattern.is_match(line) {
+            return ConnectionEvent::Error {
+                kind: VpnError::NetworkError {
+                    reason: "Certificate validation failed".to_string(),
+                },
+                raw_output: line.to_string(),
+            };
+        }
+
+        // Check for TUN device errors
+        if self.tun_error_pattern.is_match(line) {
+            return ConnectionEvent::Error {
+                kind: VpnError::ConnectionFailed {
+                    reason: "Failed to open TUN device - try running with sudo".to_string(),
+                },
+                raw_output: line.to_string(),
+            };
+        }
+
+        // Check for DNS resolution errors
+        if self.dns_error_pattern.is_match(line) {
+            return ConnectionEvent::Error {
+                kind: VpnError::NetworkError {
+                    reason: "DNS resolution failed - check server address".to_string(),
+                },
+                raw_output: line.to_string(),
+            };
+        }
+
+        // Treat unrecognized stderr as unknown output
         ConnectionEvent::UnknownOutput {
             line: line.to_string(),
         }

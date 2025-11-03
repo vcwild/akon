@@ -140,3 +140,116 @@ fn test_parse_ipv6_extraction() {
         _ => panic!("Expected TunConfigured event with IPv6, got {:?}", event),
     }
 }
+
+// User Story 6 Tests - Enhanced error diagnostics
+
+#[test]
+fn test_parse_ssl_error() {
+    let parser = OutputParser::new();
+
+    let test_cases = vec![
+        "SSL connection failure detected",
+        "TLS handshake failed",
+        "SSL: certificate verify failed",
+        "connection failure: TLS error",
+    ];
+
+    for line in test_cases {
+        let event = parser.parse_error(line);
+        match event {
+            ConnectionEvent::Error { kind, raw_output } => {
+                assert!(kind.to_string().contains("SSL") || kind.to_string().contains("TLS")
+                    || kind.to_string().contains("Network"),
+                    "Expected SSL/TLS error for line: {}", line);
+                assert_eq!(raw_output, line);
+            }
+            _ => panic!("Expected Error event for SSL error, got {:?}", event),
+        }
+    }
+}
+
+#[test]
+fn test_parse_certificate_error() {
+    let parser = OutputParser::new();
+
+    let test_cases = vec![
+        "certificate verification failed",
+        "cert is invalid",
+        "Certificate validation error",
+    ];
+
+    for line in test_cases {
+        let event = parser.parse_error(line);
+        match event {
+            ConnectionEvent::Error { kind, raw_output } => {
+                assert!(kind.to_string().contains("Certificate") || kind.to_string().contains("Network"),
+                    "Expected certificate error for line: {}", line);
+                assert_eq!(raw_output, line);
+            }
+            _ => panic!("Expected Error event for certificate error, got {:?}", event),
+        }
+    }
+}
+
+#[test]
+fn test_parse_tun_device_error() {
+    let parser = OutputParser::new();
+
+    let test_cases = vec![
+        "failed to open tun device",
+        "tun0 error: permission denied",
+        "no tun device available",
+    ];
+
+    for line in test_cases {
+        let event = parser.parse_error(line);
+        match event {
+            ConnectionEvent::Error { kind, raw_output } => {
+                assert!(kind.to_string().contains("TUN") || kind.to_string().contains("sudo")
+                    || kind.to_string().contains("Failed"),
+                    "Expected TUN device error for line: {}", line);
+                assert_eq!(raw_output, line);
+            }
+            _ => panic!("Expected Error event for TUN device error, got {:?}", event),
+        }
+    }
+}
+
+#[test]
+fn test_parse_dns_error() {
+    let parser = OutputParser::new();
+
+    let test_cases = vec![
+        "cannot resolve hostname vpn.example.com",
+        "unknown host: vpn.example.com",
+        "name resolution failed",
+    ];
+
+    for line in test_cases {
+        let event = parser.parse_error(line);
+        match event {
+            ConnectionEvent::Error { kind, raw_output } => {
+                assert!(kind.to_string().contains("DNS") || kind.to_string().contains("Network")
+                    || kind.to_string().contains("resolution"),
+                    "Expected DNS error for line: {}", line);
+                assert_eq!(raw_output, line);
+            }
+            _ => panic!("Expected Error event for DNS error, got {:?}", event),
+        }
+    }
+}
+
+#[test]
+fn test_parse_auth_error_still_works() {
+    let parser = OutputParser::new();
+    let line = "Failed to authenticate";
+    let event = parser.parse_error(line);
+
+    match event {
+        ConnectionEvent::Error { kind, .. } => {
+            assert!(kind.to_string().contains("Authentication"),
+                "Expected authentication error, got: {}", kind);
+        }
+        _ => panic!("Expected Error event for auth failure, got {:?}", event),
+    }
+}
