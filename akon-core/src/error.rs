@@ -91,7 +91,7 @@ pub enum KeyringError {
 }
 
 /// VPN connection operation errors
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum VpnError {
     #[error("Connection failed: {reason}")]
     ConnectionFailed { reason: String },
@@ -107,6 +107,18 @@ pub enum VpnError {
 
     #[error("Invalid connection state transition")]
     InvalidStateTransition,
+
+    #[error("Failed to spawn OpenConnect process: {reason}")]
+    ProcessSpawnError { reason: String },
+
+    #[error("Connection timeout after {seconds} seconds")]
+    ConnectionTimeout { seconds: u64 },
+
+    #[error("Failed to terminate OpenConnect process")]
+    TerminationError,
+
+    #[error("Failed to parse OpenConnect output: {line}")]
+    ParseError { line: String },
 }
 
 /// OTP/TOTP operation errors

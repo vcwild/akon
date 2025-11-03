@@ -39,7 +39,8 @@ enum VpnCommands {
     Status,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Initialize logging
     if let Err(e) = init_logging() {
         eprintln!("Failed to initialize logging: {}", e);
@@ -51,8 +52,8 @@ fn main() {
     let result = match cli.command {
         Commands::Setup => cli::setup::run_setup(),
         Commands::Vpn { action } => match action {
-            VpnCommands::On => cli::vpn::run_vpn_on(),
-            VpnCommands::Off => cli::vpn::run_vpn_off(),
+            VpnCommands::On => cli::vpn::run_vpn_on().await,
+            VpnCommands::Off => cli::vpn::run_vpn_off().await,
             VpnCommands::Status => cli::vpn::run_vpn_status(),
         },
         Commands::GetPassword => cli::get_password::run_get_password(),
@@ -73,6 +74,10 @@ fn main() {
                     akon_core::error::VpnError::NetworkError { .. } => 1,
                     akon_core::error::VpnError::InvalidStateTransition => 1,
                     akon_core::error::VpnError::OpenConnectError { .. } => 1,
+                    akon_core::error::VpnError::ProcessSpawnError { .. } => 1,
+                    akon_core::error::VpnError::ConnectionTimeout { .. } => 1,
+                    akon_core::error::VpnError::TerminationError => 1,
+                    akon_core::error::VpnError::ParseError { .. } => 1,
                 },
                 // OTP errors (exit code 2 - configuration/setup)
                 AkonError::Otp(_) => 2,
