@@ -51,15 +51,18 @@ This design eliminates FFI complexity while maintaining full OpenConnect functio
 git clone https://github.com/vcwild/akon.git
 cd akon
 
-# Build release binary
-cargo build --release
-
-# Install to /usr/local/bin
-sudo cp target/release/akon /usr/local/bin/
+# Build and install (sets up passwordless sudo for openconnect)
+make install
 
 # Verify installation
 akon --help
 ```
+
+**What `make install` does:**
+- Builds the release binary
+- Installs to `/usr/local/bin/akon`
+- Configures passwordless sudo for openconnect
+- No password prompts when connecting to VPN!
 
 ## Quick Start
 
@@ -423,7 +426,7 @@ if self.new_error_pattern.is_match(line) {
 
 ## Contributing
 
-Contributions welcome! Please:
+Contributions are welcome! Please:
 
 1. Follow existing code style
 2. Add tests for new features
@@ -433,11 +436,7 @@ Contributions welcome! Please:
 
 ## License
 
-[Add your license here]
-
-## Author
-
-Victor Wild (vcwild)
+This project is licensed under the MIT license.
 
 ## Acknowledgments
 
