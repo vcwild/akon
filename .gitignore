@@ -1,4 +1,6 @@
 .github
+!.github/workflows/
+!.github/workflows/*.yml
 debug/
 traces/
 # Added by cargo

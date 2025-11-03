@@ -2,7 +2,7 @@ name: Release
 
 on:
   release:
-    types: [published]
+    types: [published, created]
   push:
     tags:
       - "v*"  # Run when a version tag is pushed (e.g., v1.0.0)
