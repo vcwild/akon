@@ -209,7 +209,7 @@ fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::
             base_interval_secs: 5,
             backoff_multiplier: 2,
             max_interval_secs: 60,
-            consecutive_failures_threshold: 3,
+            consecutive_failures_threshold: 2,
             health_check_interval_secs: 60,
             health_check_endpoint,
         };
@@ -254,8 +254,8 @@ fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::
     // Consecutive failures
     println!();
     println!("Number of consecutive health check failures before triggering reconnection (1-10)");
-    let consecutive_failures_str = prompt_optional("Consecutive Failures Threshold", "3")?;
-    let consecutive_failures_threshold = consecutive_failures_str.parse::<u32>().unwrap_or(3);
+    let consecutive_failures_str = prompt_optional("Consecutive Failures Threshold", "2")?;
+    let consecutive_failures_threshold = consecutive_failures_str.parse::<u32>().unwrap_or(2);
 
     // Health check interval
     println!();

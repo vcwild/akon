@@ -432,8 +432,21 @@ impl ReconnectionManager {
         let mut current_attempt = 1u32;
         let mut should_reconnect = false;
 
+        // Clone state receiver for monitoring state changes
+        let mut state_monitor = self.state_rx.clone();
+
         loop {
             tokio::select! {
+                // Monitor for state changes to react immediately to Disconnected state
+                Ok(_) = state_monitor.changed() => {
+                    let current_state = state_monitor.borrow().clone();
+                    if matches!(current_state, ConnectionState::Disconnected) && !should_reconnect {
+                        tracing::info!("State changed to Disconnected, immediately initiating reconnection");
+                        should_reconnect = true;
+                        current_attempt = 1;
+                    }
+                }
+
                 // Handle commands from external control
                 Some(cmd) = self.command_rx.recv() => {
                     match cmd {
@@ -462,10 +475,18 @@ impl ReconnectionManager {
                             tracing::info!("Reset retries: cleared attempt counter and consecutive failures");
                         }
                         ReconnectionCommand::SetConnected { server, username } => {
-                            // Set state to Connected (used when VPN initially connects)
+                            // Set state to Connected (used when VPN initially connects or after successful reconnection)
                             use crate::vpn::state::ConnectionMetadata;
                             let metadata = ConnectionMetadata::new(server, username);
                             let _ = self.state_tx.send(ConnectionState::Connected(metadata));
+
+                            // Stop reconnection attempts and reset counters
+                            should_reconnect = false;
+                            current_attempt = 1;
+                            if let Ok(mut counter) = self.consecutive_failures_counter.lock() {
+                                *counter = 0;
+                            }
+
                             tracing::info!("State set to Connected, health checks will now run");
                         }
                         ReconnectionCommand::CheckNow => {

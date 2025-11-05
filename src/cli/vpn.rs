@@ -11,6 +11,7 @@ use akon_core::vpn::{CliConnector, ConnectionEvent};
 use colored::Colorize;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, error, info, warn};
 
@@ -143,18 +144,50 @@ async fn perform_reconnection(
     info!("Performing VPN reconnection");
 
     // Step 1: Cleanup all stale OpenConnect processes
-    info!("Cleaning up stale OpenConnect processes");
-    match cleanup_orphaned_processes() {
-        Ok(count) => {
-            info!("Terminated {} stale OpenConnect process(es)", count);
+    // Use sudo to ensure we can kill processes started with sudo
+    info!("Cleaning up stale OpenConnect processes with elevated privileges");
+
+    // First try with sudo pkill for more reliable cleanup
+    match std::process::Command::new("sudo")
+        .arg("-n") // Non-interactive, fail if password required
+        .arg("pkill")
+        .arg("-TERM") // Send SIGTERM
+        .arg("openconnect")
+        .output()
+    {
+        Ok(output) => {
+            if output.status.success() {
+                info!("Sent SIGTERM to openconnect processes via sudo");
+                // Wait for graceful termination
+                tokio::time::sleep(Duration::from_secs(2)).await;
+
+                // Force kill any remaining processes
+                let _ = std::process::Command::new("sudo")
+                    .arg("-n")
+                    .arg("pkill")
+                    .arg("-KILL")
+                    .arg("openconnect")
+                    .output();
+            } else {
+                warn!("sudo pkill failed, falling back to regular cleanup");
+                // Fall back to regular cleanup
+                match cleanup_orphaned_processes() {
+                    Ok(count) => info!("Terminated {} processes via fallback cleanup", count),
+                    Err(e) => warn!("Fallback cleanup also failed: {}", e),
+                }
+            }
         }
         Err(e) => {
-            warn!("Failed to cleanup processes: {}, continuing anyway", e);
+            warn!("Failed to execute sudo pkill: {}, trying regular cleanup", e);
+            match cleanup_orphaned_processes() {
+                Ok(count) => info!("Terminated {} processes via regular cleanup", count),
+                Err(e) => warn!("Regular cleanup failed: {}", e),
+            }
         }
     }
 
     // Step 2: Wait a moment for cleanup to complete
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     // Step 3: Generate new password
     let password = generate_password(&config.username).map_err(|e| {
@@ -232,6 +265,16 @@ fn spawn_reconnection_manager_daemon(
     use std::process::Command;
 
     info!("Spawning reconnection manager daemon");
+
+    // Kill any existing reconnection manager daemons before starting a new one
+    info!("Cleaning up any existing reconnection manager daemons");
+    let _ = Command::new("pkill")
+        .arg("-f")
+        .arg("__internal_reconnection_daemon")
+        .output();
+
+    // Give processes time to terminate
+    std::thread::sleep(std::time::Duration::from_millis(500));
 
     // Get the current executable path
     let exe_path = std::env::current_exe().map_err(|e| {
@@ -328,6 +371,11 @@ pub async fn run_reconnection_manager_daemon(
     // Spawn a task to watch for reconnection state changes and trigger actual reconnection
     let config_for_watcher = config.clone();
     let policy_for_watcher = policy.clone();
+
+    // Track if reconnection is in progress and last attempt number to prevent duplicate attempts
+    let reconnection_state = Arc::new(tokio::sync::Mutex::new((false, 0u32))); // (in_progress, last_attempt)
+    let reconnection_state_clone = reconnection_state.clone();
+
     tokio::spawn(async move {
         use akon_core::vpn::state::ConnectionState;
         use akon_core::vpn::reconnection::ReconnectionCommand;
@@ -343,7 +391,38 @@ pub async fn run_reconnection_manager_daemon(
             // T053: Update state file with current reconnection state
             match &state {
                 ConnectionState::Reconnecting { attempt, next_retry_at, max_attempts } => {
-                    info!("Detected Reconnecting state (attempt {}), performing reconnection", attempt);
+                    // Check if we should process this attempt
+                    let mut reconnection_info = reconnection_state_clone.lock().await;
+                    let (in_progress, last_attempt) = *reconnection_info;
+
+                    // Skip if:
+                    // 1. A reconnection is already in progress, OR
+                    // 2. We've already processed this attempt number
+                    if in_progress {
+                        info!("Reconnection already in progress, skipping attempt {}", attempt);
+                        let state_json = serde_json::json!({
+                            "state": "Reconnecting",
+                            "attempt": attempt,
+                            "next_retry_at": next_retry_at,
+                            "max_attempts": max_attempts,
+                            "updated_at": chrono::Utc::now().to_rfc3339(),
+                        });
+                        if let Ok(json) = serde_json::to_string_pretty(&state_json) {
+                            let _ = fs::write(state_file_path(), json);
+                        }
+                        continue;
+                    }
+
+                    if *attempt <= last_attempt {
+                        info!("Skipping already processed attempt {}", attempt);
+                        continue;
+                    }
+
+                    // Mark reconnection as in progress and update last attempt
+                    *reconnection_info = (true, *attempt);
+                    drop(reconnection_info); // Release lock before async work
+
+                    info!("Starting reconnection attempt {}", attempt);
 
                     // Write reconnecting state to file
                     let state_json = serde_json::json!({
@@ -360,13 +439,37 @@ pub async fn run_reconnection_manager_daemon(
                     // Perform the actual reconnection
                     match perform_reconnection(config_for_watcher.clone()).await {
                         Ok(_) => {
-                            info!("Reconnection successful, resetting retries");
-                            let _ = command_tx.send(ReconnectionCommand::ResetRetries);
+                            info!("Reconnection attempt {} successful, transitioning to Connected", attempt);
+                            // Set state to Connected to stop the retry loop
+                            let _ = command_tx.send(ReconnectionCommand::SetConnected {
+                                server: config_for_watcher.server.clone(),
+                                username: config_for_watcher.username.clone(),
+                            });
+
+                            // Set last_attempt to MAX to reject ALL queued retry attempts
+                            // This prevents any queued Reconnecting(attempt=2, 3, 4, 5) states
+                            // from being processed after successful reconnection
+                            let mut reconnection_info = reconnection_state_clone.lock().await;
+                            reconnection_info.0 = false; // Clear in_progress flag
+                            reconnection_info.1 = u32::MAX; // Reject all future attempts until reset
+                            info!("Set last_attempt=MAX to reject any queued retry attempts");
                         }
                         Err(e) => {
                             warn!("Reconnection attempt {} failed: {}", attempt, e);
-                            // Will retry on next timer tick with exponential backoff
+                            // Mark reconnection as complete so next attempt can proceed
+                            let mut reconnection_info = reconnection_state_clone.lock().await;
+                            reconnection_info.0 = false; // Clear in_progress flag
+                            // Keep last_attempt so we don't retry the same attempt
                         }
+                    }
+                }
+                ConnectionState::Connected(_) => {
+                    // When we reach Connected state from SetConnected command,
+                    // reset last_attempt to 0 so new disconnections can be handled
+                    let mut reconnection_info = reconnection_state_clone.lock().await;
+                    if reconnection_info.1 > 0 {
+                        info!("Connected state reached, resetting reconnection tracking for future disconnections");
+                        *reconnection_info = (false, 0);
                     }
                 }
                 ConnectionState::Error(error_msg) => {

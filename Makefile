@@ -11,7 +11,7 @@ install: all
 	sudo install -m 755 target/release/akon /usr/local/bin/akon
 	@echo "✓ Installed to /usr/local/bin/akon"
 	@echo ""
-	@echo "Configuring passwordless sudo for openconnect..."
+	@echo "Configuring passwordless sudo for openconnect and pkill..."
 	@if ! command -v openconnect &> /dev/null; then \
 		echo "ERROR: openconnect is not installed"; \
 		echo "Please install it first:"; \
@@ -19,13 +19,22 @@ install: all
 		echo "  RHEL/Fedora:   sudo dnf install openconnect"; \
 		exit 1; \
 	fi
+	@if ! command -v pkill &> /dev/null; then \
+		echo "ERROR: pkill is not installed"; \
+		echo "Please install procps package:"; \
+		echo "  Ubuntu/Debian: sudo apt install procps"; \
+		echo "  RHEL/Fedora:   sudo dnf install procps-ng"; \
+		exit 1; \
+	fi
 	@OPENCONNECT_PATH=$$(which openconnect); \
+	PKILL_PATH=$$(which pkill); \
 	SUDOERS_FILE="/etc/sudoers.d/akon"; \
-	echo "# Allow $$USER to run openconnect without password for akon VPN" | sudo tee $$SUDOERS_FILE > /dev/null; \
+	echo "# Allow $$USER to run openconnect and pkill without password for akon VPN" | sudo tee $$SUDOERS_FILE > /dev/null; \
 	echo "$$USER ALL=(root) NOPASSWD: $$OPENCONNECT_PATH" | sudo tee -a $$SUDOERS_FILE > /dev/null; \
+	echo "$$USER ALL=(root) NOPASSWD: $$PKILL_PATH" | sudo tee -a $$SUDOERS_FILE > /dev/null; \
 	sudo chmod 0440 $$SUDOERS_FILE; \
 	if sudo visudo -c -f $$SUDOERS_FILE 2>&1 | grep -q "parsed OK"; then \
-		echo "✓ Passwordless sudo configured for openconnect"; \
+		echo "✓ Passwordless sudo configured for openconnect and pkill"; \
 	else \
 		echo "ERROR: Invalid sudoers configuration"; \
 		sudo rm -f $$SUDOERS_FILE; \
