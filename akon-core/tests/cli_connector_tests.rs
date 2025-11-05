@@ -6,11 +6,7 @@ use std::net::IpAddr;
 
 #[test]
 fn test_cli_connector_new_creates_idle_state() {
-    let config = VpnConfig::new(
-        "vpn.example.com".to_string(),
-        443,
-        "testuser".to_string(),
-    );
+    let config = VpnConfig::new("vpn.example.com".to_string(), "testuser".to_string());
 
     let connector = CliConnector::new(config).expect("Failed to create connector");
     let state = connector.state();
@@ -20,11 +16,7 @@ fn test_cli_connector_new_creates_idle_state() {
 
 #[test]
 fn test_cli_connector_initial_is_not_connected() {
-    let config = VpnConfig::new(
-        "vpn.example.com".to_string(),
-        443,
-        "testuser".to_string(),
-    );
+    let config = VpnConfig::new("vpn.example.com".to_string(), "testuser".to_string());
 
     let connector = CliConnector::new(config).expect("Failed to create connector");
 
@@ -54,7 +46,10 @@ fn test_connection_state_established() {
     };
 
     match state {
-        ConnectionState::Established { ip: state_ip, device } => {
+        ConnectionState::Established {
+            ip: state_ip,
+            device,
+        } => {
             assert_eq!(state_ip.to_string(), "10.0.1.100");
             assert_eq!(device, "tun0");
         }
@@ -64,11 +59,7 @@ fn test_connection_state_established() {
 
 #[test]
 fn test_is_connected_for_established_state() {
-    let config = VpnConfig::new(
-        "vpn.example.com".to_string(),
-        443,
-        "testuser".to_string(),
-    );
+    let config = VpnConfig::new("vpn.example.com".to_string(), "testuser".to_string());
 
     let connector = CliConnector::new(config).expect("Failed to create connector");
 

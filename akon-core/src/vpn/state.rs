@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Connection metadata
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct ConnectionMetadata {
     /// Server endpoint
     pub server: String,
@@ -69,6 +69,16 @@ pub enum ConnectionState {
 
     /// Disconnecting
     Disconnecting,
+
+    /// Automatic reconnection in progress
+    Reconnecting {
+        /// Current attempt number (1-indexed)
+        attempt: u32,
+        /// Unix timestamp for next retry attempt
+        next_retry_at: Option<u64>,
+        /// Total maximum attempts allowed
+        max_attempts: u32,
+    },
 }
 
 impl Default for ConnectionState {
@@ -85,6 +95,13 @@ impl std::fmt::Display for ConnectionState {
             ConnectionState::Connected(_) => write!(f, "connected"),
             ConnectionState::Error(msg) => write!(f, "error: {}", msg),
             ConnectionState::Disconnecting => write!(f, "disconnecting"),
+            ConnectionState::Reconnecting {
+                attempt,
+                max_attempts,
+                ..
+            } => {
+                write!(f, "reconnecting (attempt {} of {})", attempt, max_attempts)
+            }
         }
     }
 }

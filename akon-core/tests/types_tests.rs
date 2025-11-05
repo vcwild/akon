@@ -2,8 +2,8 @@
 //!
 //! Tests ConnectionState, KeyringEntry, IpcMessage types, and secure wrappers.
 
-use akon_core::types::{ConnectionState, IpcMessage, KeyringEntry, Pin, VpnPassword, TotpToken};
 use akon_core::error::OtpError;
+use akon_core::types::{ConnectionState, IpcMessage, KeyringEntry, Pin, TotpToken, VpnPassword};
 use std::time::SystemTime;
 
 #[test]
@@ -33,7 +33,10 @@ fn test_connection_state_connected() {
     };
 
     match state {
-        ConnectionState::Connected { connected_at, server } => {
+        ConnectionState::Connected {
+            connected_at,
+            server,
+        } => {
             assert_eq!(connected_at, now);
             assert_eq!(server, "vpn.example.com");
         }
@@ -196,7 +199,8 @@ fn test_ipc_message_serialization() {
     };
 
     let serialized = serde_json::to_string(&msg).expect("Failed to serialize");
-    let deserialized: IpcMessage = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: IpcMessage =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert_eq!(msg, deserialized);
 }
@@ -206,7 +210,8 @@ fn test_connection_state_serialization() {
     let state = ConnectionState::Connecting;
 
     let serialized = serde_json::to_string(&state).expect("Failed to serialize");
-    let deserialized: ConnectionState = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: ConnectionState =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert_eq!(state, deserialized);
 }

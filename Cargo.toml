@@ -45,7 +45,7 @@ clap = { version = "4.0", features = ["derive"] }
 tracing = "0.1"
 tracing-journald = "0.3"
 tracing-subscriber = "0.3"
-tokio = { version = "1.35", features = ["process", "io-util", "time", "macros", "rt-multi-thread", "full"] }
+tokio = { version = "1.35", features = ["process", "io-util", "time", "macros", "rt-multi-thread", "sync", "signal", "full"] }
 
 # Security and crypto
 totp-lite = "2.0"
@@ -62,3 +62,24 @@ libc = "0.2"
 [dev-dependencies]
 cargo-tarpaulin = "0.27"
 tempfile = "3.0"
+
+# Profile optimizations for faster builds and better caching
+[profile.dev]
+# Enable incremental compilation for faster rebuilds
+incremental = true
+# Split debuginfo to separate files for better caching
+split-debuginfo = "unpacked"
+
+[profile.test]
+# Inherit from dev profile for consistency
+inherits = "dev"
+# Enable incremental compilation for tests
+incremental = true
+
+[profile.release]
+# Optimize for performance in release builds
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+

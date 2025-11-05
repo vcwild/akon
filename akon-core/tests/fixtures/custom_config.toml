@@ -1,0 +1,14 @@
+# Test configuration with custom reconnection settings
+
+[vpn]
+server = "vpn.test.local"
+username = "customuser"
+
+[reconnection]
+backoff_multiplier = 3
+base_interval_secs = 10
+consecutive_failures_threshold = 5
+health_check_endpoint = "https://vpn.test.local/health"
+health_check_interval_secs = 30
+max_attempts = 10
+max_interval_secs = 120

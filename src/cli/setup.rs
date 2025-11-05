@@ -13,17 +13,34 @@ use std::io::{self, Write};
 
 /// Run the setup command
 pub fn run_setup() -> Result<(), AkonError> {
-    println!("{} {}", "🔐".bright_magenta(), "akon VPN Setup".bright_white().bold());
+    println!(
+        "{} {}",
+        "🔐".bright_magenta(),
+        "akon VPN Setup".bright_white().bold()
+    );
     println!("{}", "=================".bright_white());
     println!();
-    println!("{}", "This will configure your VPN connection securely.".bright_white());
-    println!("{}", "Credentials will be stored in your system keyring.".dimmed());
-    println!("{}", "Configuration will be saved to ~/.config/akon/config.toml".dimmed());
+    println!(
+        "{}",
+        "This will configure your VPN connection securely.".bright_white()
+    );
+    println!(
+        "{}",
+        "Credentials will be stored in your system keyring.".dimmed()
+    );
+    println!(
+        "{}",
+        "Configuration will be saved to ~/.config/akon/config.toml".dimmed()
+    );
     println!();
 
     // Check if already configured
     if let Ok(true) = toml_config::config_exists() {
-        println!("{} {}", "⚠".bright_yellow(), "Existing configuration detected.".bright_yellow());
+        println!(
+            "{} {}",
+            "⚠".bright_yellow(),
+            "Existing configuration detected.".bright_yellow()
+        );
         if !prompt_yes_no("Overwrite existing setup? (y/N)", false)? {
             println!("{}", "Setup cancelled.".dimmed());
             return Ok(());
@@ -37,6 +54,7 @@ pub fn run_setup() -> Result<(), AkonError> {
     // Collect configuration interactively
     let config = collect_vpn_config()?;
     let otp_secret = collect_otp_secret()?;
+    let reconnection_policy = collect_reconnection_config()?;
 
     // Validate configuration
     config.validate().map_err(|e| {
@@ -46,26 +64,35 @@ pub fn run_setup() -> Result<(), AkonError> {
     })?;
 
     // Validate OTP secret
-    otp_secret
-        .validate_base32()
-        .map_err(AkonError::Otp)?;
+    otp_secret.validate_base32().map_err(AkonError::Otp)?;
 
     // Save configuration
     println!();
-    println!("{} {}", "💾".bright_cyan(), "Saving configuration...".bright_white());
+    println!(
+        "{} {}",
+        "💾".bright_cyan(),
+        "Saving configuration...".bright_white()
+    );
 
-    // Save config to TOML file
-    toml_config::save_config(&config)?;
+    // Save config to TOML file with reconnection policy
+    toml_config::save_config_with_reconnection(&config, reconnection_policy.as_ref())?;
 
     // Store OTP secret in keyring
     keyring::store_otp_secret(&config.username, otp_secret.expose())?;
 
-    println!("{} {}", "✅".bright_green(), "Setup complete!".bright_green().bold());
+    println!(
+        "{} {}",
+        "✅".bright_green(),
+        "Setup complete!".bright_green().bold()
+    );
     println!();
     println!("{}", "You can now use:".bright_white());
     println!("  {} - Connect to VPN", "akon vpn on".bright_cyan());
     println!("  {} - Disconnect from VPN", "akon vpn off".bright_cyan());
-    println!("  {} - Generate OTP token manually", "akon get-password".bright_cyan());
+    println!(
+        "  {} - Generate OTP token manually",
+        "akon get-password".bright_cyan()
+    );
 
     Ok(())
 }
@@ -127,7 +154,10 @@ fn collect_vpn_config() -> Result<VpnConfig, AkonError> {
     let no_dtls_input = prompt_optional("Disable DTLS (use TCP only)? (y/N)", "n")?;
     let no_dtls = matches!(no_dtls_input.trim().to_lowercase().as_str(), "y" | "yes");
 
-    let lazy_mode_input = prompt_optional("Enable lazy mode (connect VPN when running akon without arguments)? (y/N)", "n")?;
+    let lazy_mode_input = prompt_optional(
+        "Enable lazy mode (connect VPN when running akon without arguments)? (y/N)",
+        "n",
+    )?;
     let lazy_mode = matches!(lazy_mode_input.trim().to_lowercase().as_str(), "y" | "yes");
 
     Ok(VpnConfig {
@@ -138,6 +168,122 @@ fn collect_vpn_config() -> Result<VpnConfig, AkonError> {
         no_dtls,
         lazy_mode,
     })
+}
+
+/// Collect reconnection configuration interactively
+fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::ReconnectionPolicy>, AkonError> {
+    use akon_core::vpn::reconnection::ReconnectionPolicy;
+
+    println!();
+    println!("Reconnection Configuration (Optional):");
+    println!("-------------------------------------");
+    println!("Configure automatic reconnection when network interruptions occur.");
+    println!();
+
+    if !prompt_yes_no("Configure automatic reconnection? (Y/n)", true)? {
+        println!("{}", "Skipping reconnection config - defaults will be used if needed.".dimmed());
+        return Ok(None);
+    }
+
+    println!();
+    println!("{}", "Basic Settings:".bright_white().bold());
+    println!();
+
+    // Health check endpoint (required for reconnection)
+    println!("Enter the health check endpoint (HTTP/HTTPS URL to verify connectivity)");
+    println!("{}", "Example: https://vpn-gateway.example.com/health".dimmed());
+    let health_check_endpoint = prompt_required("Health Check Endpoint", "https://www.google.com")?;
+
+    // Validate URL
+    if !health_check_endpoint.starts_with("http://") && !health_check_endpoint.starts_with("https://") {
+        return Err(AkonError::Config(akon_core::error::ConfigError::ValidationError {
+            message: "Health check endpoint must be an HTTP or HTTPS URL".to_string(),
+        }));
+    }
+
+    println!();
+    if !prompt_yes_no("Configure advanced reconnection settings? (y/N)", false)? {
+        // Use defaults for everything else
+        let policy = ReconnectionPolicy {
+            max_attempts: 5,
+            base_interval_secs: 5,
+            backoff_multiplier: 2,
+            max_interval_secs: 60,
+            consecutive_failures_threshold: 3,
+            health_check_interval_secs: 60,
+            health_check_endpoint,
+        };
+
+        policy.validate().map_err(|e| {
+            AkonError::Config(akon_core::error::ConfigError::ValidationError {
+                message: format!("Reconnection policy validation failed: {}", e),
+            })
+        })?;
+
+        return Ok(Some(policy));
+    }
+
+    println!();
+    println!("{}", "Advanced Settings:".bright_white().bold());
+    println!();
+
+    // Max attempts
+    println!("Maximum reconnection attempts before requiring manual intervention (1-20)");
+    let max_attempts_str = prompt_optional("Max Attempts", "5")?;
+    let max_attempts = max_attempts_str.parse::<u32>().unwrap_or(5);
+
+    // Base interval
+    println!();
+    println!("Base interval in seconds for exponential backoff (1-300)");
+    let base_interval_str = prompt_optional("Base Interval (seconds)", "5")?;
+    let base_interval_secs = base_interval_str.parse::<u32>().unwrap_or(5);
+
+    // Backoff multiplier
+    println!();
+    println!("Exponential backoff multiplier (1-10)");
+    println!("{}", "Intervals will be: base × multiplier^(attempt-1)".dimmed());
+    let backoff_multiplier_str = prompt_optional("Backoff Multiplier", "2")?;
+    let backoff_multiplier = backoff_multiplier_str.parse::<u32>().unwrap_or(2);
+
+    // Max interval
+    println!();
+    println!("Maximum interval in seconds (cap for exponential growth)");
+    let max_interval_str = prompt_optional("Max Interval (seconds)", "60")?;
+    let max_interval_secs = max_interval_str.parse::<u32>().unwrap_or(60);
+
+    // Consecutive failures
+    println!();
+    println!("Number of consecutive health check failures before triggering reconnection (1-10)");
+    let consecutive_failures_str = prompt_optional("Consecutive Failures Threshold", "3")?;
+    let consecutive_failures_threshold = consecutive_failures_str.parse::<u32>().unwrap_or(3);
+
+    // Health check interval
+    println!();
+    println!("Health check interval in seconds (10-3600)");
+    let health_check_interval_str = prompt_optional("Health Check Interval (seconds)", "60")?;
+    let health_check_interval_secs = health_check_interval_str.parse::<u64>().unwrap_or(60);
+
+    let policy = ReconnectionPolicy {
+        max_attempts,
+        base_interval_secs,
+        backoff_multiplier,
+        max_interval_secs,
+        consecutive_failures_threshold,
+        health_check_interval_secs,
+        health_check_endpoint,
+    };
+
+    // Validate the policy
+    policy.validate().map_err(|e| {
+        AkonError::Config(akon_core::error::ConfigError::ValidationError {
+            message: format!("Reconnection policy validation failed: {}", e),
+        })
+    })?;
+
+    println!();
+    println!("{} {}", "✓".bright_green(), "Reconnection configuration validated".bright_green());
+
+    Ok(Some(policy))
 }
 
 /// Collect OTP secret interactively

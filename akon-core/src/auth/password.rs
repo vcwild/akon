@@ -5,7 +5,7 @@
 
 use crate::auth::{keyring, totp};
 use crate::error::AkonError;
-use crate::types::{VpnPassword, OtpSecret};
+use crate::types::{OtpSecret, VpnPassword};
 
 /// Generate the complete VPN password (PIN + OTP)
 ///

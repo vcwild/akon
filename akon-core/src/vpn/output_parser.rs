@@ -38,12 +38,13 @@ impl OutputParser {
             // Match both old format "Connected tun0 as X.X.X.X" and new F5 format "Configured as X.X.X.X"
             tun_configured_pattern: Regex::new(r"(?:Connected\s+(\w+)\s+as|Configured as)\s+(\S+)")
                 .expect("Failed to compile tun_configured pattern"),
-            established_pattern: Regex::new(r"Established connection|SSL connected|with SSL connected")
-                .expect("Failed to compile established pattern"),
+            established_pattern: Regex::new(
+                r"Established connection|SSL connected|with SSL connected",
+            )
+            .expect("Failed to compile established pattern"),
             auth_failed_pattern: Regex::new(r"Failed to authenticate")
                 .expect("Failed to compile auth_failed pattern"),
-            post_pattern: Regex::new(r"POST\s+https?://")
-                .expect("Failed to compile post pattern"),
+            post_pattern: Regex::new(r"POST\s+https?://").expect("Failed to compile post pattern"),
             connect_response_pattern: Regex::new(r"Got CONNECT response")
                 .expect("Failed to compile connect_response pattern"),
             f5_session_pattern: Regex::new(r"Connected to F5 Session Manager")
@@ -67,12 +68,14 @@ impl OutputParser {
         // Example: "Configured as 10.10.62.228, with SSL connected and DTLS disabled"
         if let Some(captures) = self.tun_configured_pattern.captures(line) {
             // Group 1 is device (optional for F5 format), Group 2 is IP
-            let device = captures.get(1)
+            let device = captures
+                .get(1)
                 .map(|m| m.as_str().to_string())
                 .unwrap_or_else(|| "tun".to_string()); // Default for F5 format
 
             // IP is in group 2 for both formats
-            let ip_str = captures.get(2)
+            let ip_str = captures
+                .get(2)
                 .or_else(|| captures.get(1)) // Fallback if only one capture group
                 .map(|m| m.as_str())
                 .unwrap_or("");
