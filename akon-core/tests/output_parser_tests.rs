@@ -86,7 +86,10 @@ fn test_parse_connect_response() {
         ConnectionEvent::Authenticating { message } => {
             assert!(message.contains("response") || message.contains("server"));
         }
-        _ => panic!("Expected Authenticating event for CONNECT response, got {:?}", event),
+        _ => panic!(
+            "Expected Authenticating event for CONNECT response, got {:?}",
+            event
+        ),
     }
 }
 
@@ -158,9 +161,13 @@ fn test_parse_ssl_error() {
         let event = parser.parse_error(line);
         match event {
             ConnectionEvent::Error { kind, raw_output } => {
-                assert!(kind.to_string().contains("SSL") || kind.to_string().contains("TLS")
-                    || kind.to_string().contains("Network"),
-                    "Expected SSL/TLS error for line: {}", line);
+                assert!(
+                    kind.to_string().contains("SSL")
+                        || kind.to_string().contains("TLS")
+                        || kind.to_string().contains("Network"),
+                    "Expected SSL/TLS error for line: {}",
+                    line
+                );
                 assert_eq!(raw_output, line);
             }
             _ => panic!("Expected Error event for SSL error, got {:?}", event),
@@ -182,11 +189,18 @@ fn test_parse_certificate_error() {
         let event = parser.parse_error(line);
         match event {
             ConnectionEvent::Error { kind, raw_output } => {
-                assert!(kind.to_string().contains("Certificate") || kind.to_string().contains("Network"),
-                    "Expected certificate error for line: {}", line);
+                assert!(
+                    kind.to_string().contains("Certificate")
+                        || kind.to_string().contains("Network"),
+                    "Expected certificate error for line: {}",
+                    line
+                );
                 assert_eq!(raw_output, line);
             }
-            _ => panic!("Expected Error event for certificate error, got {:?}", event),
+            _ => panic!(
+                "Expected Error event for certificate error, got {:?}",
+                event
+            ),
         }
     }
 }
@@ -205,9 +219,13 @@ fn test_parse_tun_device_error() {
         let event = parser.parse_error(line);
         match event {
             ConnectionEvent::Error { kind, raw_output } => {
-                assert!(kind.to_string().contains("TUN") || kind.to_string().contains("sudo")
-                    || kind.to_string().contains("Failed"),
-                    "Expected TUN device error for line: {}", line);
+                assert!(
+                    kind.to_string().contains("TUN")
+                        || kind.to_string().contains("sudo")
+                        || kind.to_string().contains("Failed"),
+                    "Expected TUN device error for line: {}",
+                    line
+                );
                 assert_eq!(raw_output, line);
             }
             _ => panic!("Expected Error event for TUN device error, got {:?}", event),
@@ -229,9 +247,13 @@ fn test_parse_dns_error() {
         let event = parser.parse_error(line);
         match event {
             ConnectionEvent::Error { kind, raw_output } => {
-                assert!(kind.to_string().contains("DNS") || kind.to_string().contains("Network")
-                    || kind.to_string().contains("resolution"),
-                    "Expected DNS error for line: {}", line);
+                assert!(
+                    kind.to_string().contains("DNS")
+                        || kind.to_string().contains("Network")
+                        || kind.to_string().contains("resolution"),
+                    "Expected DNS error for line: {}",
+                    line
+                );
                 assert_eq!(raw_output, line);
             }
             _ => panic!("Expected Error event for DNS error, got {:?}", event),
@@ -247,8 +269,11 @@ fn test_parse_auth_error_still_works() {
 
     match event {
         ConnectionEvent::Error { kind, .. } => {
-            assert!(kind.to_string().contains("Authentication"),
-                "Expected authentication error, got: {}", kind);
+            assert!(
+                kind.to_string().contains("Authentication"),
+                "Expected authentication error, got: {}",
+                kind
+            );
         }
         _ => panic!("Expected Error event for auth failure, got {:?}", event),
     }

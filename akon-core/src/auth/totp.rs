@@ -37,8 +37,7 @@ pub fn generate_otp(secret: &OtpSecret, timestamp: Option<u64>) -> Result<TotpTo
     let counter = get_hotp_counter(timestamp)?;
 
     // Step 2: Decode Base32 secret with custom logic
-    let key_bytes = base32::decode_base32(secret.expose())
-        .map_err(AkonError::Otp)?;
+    let key_bytes = base32::decode_base32(secret.expose()).map_err(AkonError::Otp)?;
 
     // Step 3: Convert counter to big-endian bytes
     let counter_bytes = counter.to_be_bytes();

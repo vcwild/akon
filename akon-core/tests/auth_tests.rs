@@ -2,9 +2,9 @@
 //!
 //! Tests OTP secret validation and TOTP generation.
 
+use akon_core::auth::keyring;
 use akon_core::error::OtpError;
-use akon_core::types::{OtpSecret, TotpToken};
-use akon_core::auth::keyring; // Importing keyring module for testing
+use akon_core::types::{OtpSecret, TotpToken}; // Importing keyring module for testing
 
 #[test]
 fn test_valid_base32_secret() {

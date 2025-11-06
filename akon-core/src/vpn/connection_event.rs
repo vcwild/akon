@@ -29,10 +29,7 @@ pub enum ConnectionEvent {
     Disconnected { reason: DisconnectReason },
 
     /// Error occurred during connection
-    Error {
-        kind: VpnError,
-        raw_output: String,
-    },
+    Error { kind: VpnError, raw_output: String },
 
     /// Unparsed output line (fallback)
     UnknownOutput { line: String },

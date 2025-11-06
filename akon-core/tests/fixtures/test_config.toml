@@ -1,0 +1,14 @@
+# Test configuration file for reconnection feature tests
+
+[vpn]
+server = "vpn.example.com"
+username = "testuser"
+
+[reconnection]
+backoff_multiplier = 2
+base_interval_secs = 5
+consecutive_failures_threshold = 3
+health_check_endpoint = "https://vpn.example.com/healthz"
+health_check_interval_secs = 60
+max_attempts = 5
+max_interval_secs = 60

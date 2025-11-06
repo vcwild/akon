@@ -2,6 +2,8 @@
 //!
 //! Handles communication between parent and daemon processes using Unix domain sockets.
 
+#![allow(dead_code)]
+
 use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};

@@ -5,12 +5,12 @@
 use crate::config::VpnConfig;
 use crate::error::{AkonError, VpnError};
 use crate::vpn::{ConnectionEvent, ConnectionState, DisconnectReason, OutputParser};
+use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{mpsc, Mutex};
-use std::process::Stdio;
-use std::time::Duration;
 
 /// CLI-based OpenConnect connection manager
 #[allow(dead_code)]
@@ -61,7 +61,8 @@ impl CliConnector {
     pub fn state(&self) -> ConnectionState {
         // This is a synchronous method, but we need to handle the async Mutex
         // For now, we'll use try_lock which is available
-        self.state.try_lock()
+        self.state
+            .try_lock()
             .map(|guard| guard.clone())
             .unwrap_or(ConnectionState::Idle)
     }
@@ -167,12 +168,11 @@ impl CliConnector {
     /// Writes password and keeps stdin open (closing it would terminate openconnect)
     async fn send_password(&self, child: &mut Child, password: &str) -> Result<(), VpnError> {
         if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(password.as_bytes())
-                .await
-                .map_err(|e| VpnError::ProcessSpawnError {
+            stdin.write_all(password.as_bytes()).await.map_err(|e| {
+                VpnError::ProcessSpawnError {
                     reason: format!("Failed to write password to stdin: {}", e),
-                })?;
+                }
+            })?;
 
             stdin
                 .write_all(b"\n")
@@ -269,9 +269,12 @@ impl CliConnector {
         self.send_password(&mut child, &password).await?;
 
         // Take stdout for monitoring connection status
-        let stdout = child.stdout.take().ok_or_else(|| VpnError::ProcessSpawnError {
-            reason: "Failed to capture stdout".to_string(),
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| VpnError::ProcessSpawnError {
+                reason: "Failed to capture stdout".to_string(),
+            })?;
 
         // Monitor stdout until we see connection success, then stop
         let parser = Arc::clone(&self.parser);
@@ -300,9 +303,7 @@ impl CliConnector {
                 ConnectionEvent::Error { kind, raw_output } => {
                     let error_msg = format!("{:?}: {}", kind, raw_output);
                     let _ = event_sender.send(event.clone());
-                    return Err(VpnError::ConnectionFailed {
-                        reason: error_msg,
-                    });
+                    return Err(VpnError::ConnectionFailed { reason: error_msg });
                 }
                 ConnectionEvent::Authenticating { .. } => {
                     // Only send the first authenticating event to avoid duplicates
@@ -345,7 +346,10 @@ impl CliConnector {
         {
             let mut state = self.state.lock().await;
             *state = ConnectionState::Established {
-                ip: ip_address.unwrap_or_default().parse().unwrap_or("0.0.0.0".parse().unwrap()),
+                ip: ip_address
+                    .unwrap_or_default()
+                    .parse()
+                    .unwrap_or("0.0.0.0".parse().unwrap()),
                 device: device.unwrap_or_default(),
             };
         }
@@ -391,19 +395,20 @@ impl CliConnector {
             if kill(pid, None).is_err() {
                 tracing::info!("OpenConnect process {} already terminated", pid);
 
-            // Clean up state
-            {
-                let mut pid_lock = self.openconnect_pid.lock().await;
-                *pid_lock = None;
-            }
-            {
-                let mut child_lock = self.child_process.lock().await;
-                *child_lock = None;
-            }
-            {
-                let mut stdin_lock = self.process_stdin.lock().await;
-                *stdin_lock = None; // Close stdin
-            }                return Ok(());
+                // Clean up state
+                {
+                    let mut pid_lock = self.openconnect_pid.lock().await;
+                    *pid_lock = None;
+                }
+                {
+                    let mut child_lock = self.child_process.lock().await;
+                    *child_lock = None;
+                }
+                {
+                    let mut stdin_lock = self.process_stdin.lock().await;
+                    *stdin_lock = None; // Close stdin
+                }
+                return Ok(());
             }
 
             tracing::info!("Sending SIGTERM to OpenConnect process {}", pid);

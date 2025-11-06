@@ -7,6 +7,8 @@ A secure command-line tool for managing VPN connections with automatic TOTP (Tim
 - 🔐 **Secure Credential Management**: Stores PIN and TOTP secret securely in GNOME Keyring
 - 🚀 **Automatic OTP Generation**: Generates TOTP tokens automatically during connection
 - 🔌 **OpenConnect Integration**: Uses OpenConnect CLI for robust VPN connectivity (F5 protocol support)
+- 🔄 **Automatic Reconnection**: Detects network interruptions and reconnects with exponential backoff
+- 💓 **Health Monitoring**: Periodic health checks detect silent VPN failures
 - ⚡ **Fast & Lightweight**: CLI-based architecture with minimal dependencies
 - 📊 **Real-time Progress**: Shows connection progress with detailed status updates
 - 🛡️ **Production-Ready**: Comprehensive error handling with actionable suggestions
@@ -166,6 +168,108 @@ akon  # Shows usage information
 ```
 
 This feature is perfect for quick VPN connections - just type `akon` and go!
+
+### Automatic Reconnection
+
+akon automatically detects network interruptions and reconnects your VPN with intelligent retry logic.
+
+#### Configuration
+
+Add a `[reconnection]` section to your config to enable automatic reconnection:
+
+```toml
+[vpn]
+server = "vpn.example.com"
+username = "your.username"
+protocol = "f5"
+
+[reconnection]
+# Required: HTTP/HTTPS endpoint to check connectivity
+health_check_endpoint = "https://your-internal-server.example.com/"
+
+# Optional: Customize retry behavior (defaults shown)
+max_attempts = 5              # Maximum reconnection attempts
+base_interval_secs = 5        # Initial retry delay
+backoff_multiplier = 2        # Exponential backoff multiplier
+max_interval_secs = 60        # Maximum delay between attempts
+consecutive_failures_threshold = 2  # Health check failures before reconnection
+health_check_interval_secs = 60     # How often to check health
+```
+
+#### How It Works
+
+**Network Interruption Detection:**
+- Monitors NetworkManager via D-Bus
+- Detects WiFi changes, suspend/resume, interface changes
+- Automatically triggers reconnection when network returns
+
+**Health Monitoring:**
+- Periodic HTTP checks to configured endpoint
+- Detects silent VPN failures (connection alive but traffic not flowing)
+- Triggers reconnection after consecutive failure threshold
+
+**Exponential Backoff:**
+- First attempt: 5 seconds
+- Second attempt: 10 seconds
+- Third attempt: 20 seconds
+- Fourth attempt: 40 seconds
+- Fifth attempt: 60 seconds (capped)
+
+**Example Reconnection Flow:**
+```text
+1. VPN Connected → Network interruption detected
+2. Attempt 1 (after 5s) → Failed
+3. Attempt 2 (after 10s) → Failed
+4. Attempt 3 (after 20s) → Success!
+5. VPN Connected → Continues monitoring
+```
+
+#### Manual Recovery Commands
+
+If automatic reconnection fails after max attempts:
+
+```bash
+# 1. Check status (shows error and manual steps)
+akon vpn status
+
+# Output:
+# ● Status: Error - Max reconnection attempts exceeded
+#   Last error: Connection refused after 5 attempts
+#   ❌ Failed after 5 reconnection attempts
+#
+# ⚠ Manual intervention required:
+#   1. Run akon vpn cleanup to terminate orphaned processes
+#   2. Run akon vpn reset to clear retry counter
+#   3. Run akon vpn on to reconnect
+
+# 2. Cleanup orphaned processes
+sudo akon vpn cleanup
+
+# 3. Reset retry counters
+akon vpn reset
+
+# 4. Try connecting again
+sudo akon vpn on
+```
+
+#### Troubleshooting Reconnection
+
+**Reconnection not working:**
+- Verify `[reconnection]` section exists in config
+- Check health_check_endpoint is reachable from your network
+- Review logs: `journalctl -u akon -f`
+
+**Too many reconnection attempts:**
+- Increase `max_attempts` in config
+- Increase `max_interval_secs` for longer backoff
+
+**Reconnecting too quickly:**
+- Increase `base_interval_secs`
+- Increase `backoff_multiplier`
+
+**Health checks too sensitive:**
+- Increase `consecutive_failures_threshold`
+- Increase `health_check_interval_secs`
 
 ### Keyring Storage
 

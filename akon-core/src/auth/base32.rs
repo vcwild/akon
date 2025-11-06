@@ -75,12 +75,12 @@ mod tests {
     #[test]
     fn test_pad_formula() {
         // Test padding formula: (8 - (len % 8)) % 8
-        assert_eq!(pad("A").len(), 8);       // len=1, pad=7: "A======="
-        assert_eq!(pad("AB").len(), 8);      // len=2, pad=6: "AB======"
-        assert_eq!(pad("ABC").len(), 8);     // len=3, pad=5: "ABC====="
-        assert_eq!(pad("ABCD").len(), 8);    // len=4, pad=4: "ABCD===="
-        assert_eq!(pad("ABCDE").len(), 8);   // len=5, pad=3: "ABCDE==="
-        assert_eq!(pad("ABCDEF").len(), 8);  // len=6, pad=2: "ABCDEF=="
+        assert_eq!(pad("A").len(), 8); // len=1, pad=7: "A======="
+        assert_eq!(pad("AB").len(), 8); // len=2, pad=6: "AB======"
+        assert_eq!(pad("ABC").len(), 8); // len=3, pad=5: "ABC====="
+        assert_eq!(pad("ABCD").len(), 8); // len=4, pad=4: "ABCD===="
+        assert_eq!(pad("ABCDE").len(), 8); // len=5, pad=3: "ABCDE==="
+        assert_eq!(pad("ABCDEF").len(), 8); // len=6, pad=2: "ABCDEF=="
         assert_eq!(pad("ABCDEFG").len(), 8); // len=7, pad=1: "ABCDEFG="
         assert_eq!(pad("ABCDEFGH").len(), 8); // len=8, pad=0: "ABCDEFGH"
     }

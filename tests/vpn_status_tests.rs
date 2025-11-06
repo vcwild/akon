@@ -28,9 +28,16 @@ fn test_vpn_status_no_daemon() {
         .expect("Failed to run vpn status without daemon");
 
     // Should exit with 1 when not connected (as per contract)
-    assert_eq!(output.status.code(), Some(1), "Status should exit with 1 when not connected");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "Status should exit with 1 when not connected"
+    );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Not connected") || stdout.contains("not connected"),
-        "Status message should indicate not connected: {}", stdout);
+    assert!(
+        stdout.contains("Not connected") || stdout.contains("not connected"),
+        "Status message should indicate not connected: {}",
+        stdout
+    );
 }

@@ -7,7 +7,113 @@ use crate::config::VpnConfig;
 #[cfg(test)]
 use crate::config::VpnProtocol;
 use crate::error::{AkonError, ConfigError};
+use crate::vpn::reconnection::ReconnectionPolicy;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+/// Complete TOML configuration structure
+///
+/// Contains both VPN configuration and reconnection policy settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TomlConfig {
+    /// VPN connection settings
+    #[serde(rename = "vpn")]
+    pub vpn_config: VpnConfig,
+
+    /// Reconnection policy settings (optional)
+    #[serde(rename = "reconnection", default)]
+    pub reconnection: Option<ReconnectionPolicy>,
+}
+
+impl TomlConfig {
+    /// Create a new TOML configuration
+    pub fn new(vpn_config: VpnConfig, reconnection: Option<ReconnectionPolicy>) -> Self {
+        Self {
+            vpn_config,
+            reconnection,
+        }
+    }
+
+    /// Load configuration from a TOML file
+    pub fn from_file(path: &Path) -> Result<Self, AkonError> {
+        use tracing::{debug, info, warn};
+
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            AkonError::Config(ConfigError::IoError {
+                message: format!("Failed to read config file: {}", e),
+            })
+        })?;
+
+        let config: TomlConfig = toml::from_str(&contents).map_err(|e| {
+            AkonError::Config(ConfigError::ValidationError {
+                message: format!("Failed to parse config file: {}", e),
+            })
+        })?;
+
+        // Validate reconnection policy if present
+        if let Some(ref policy) = config.reconnection {
+            debug!("Validating reconnection policy from config");
+
+            policy.validate().map_err(|e| {
+                warn!("Reconnection policy validation failed: {}", e);
+                AkonError::Config(ConfigError::ValidationError {
+                    message: format!("Invalid reconnection policy: {}", e),
+                })
+            })?;
+
+            info!(
+                "Loaded reconnection policy: max_attempts={}, base_interval={}s, backoff_multiplier={}, max_interval={}s, consecutive_failures={}, health_check_interval={}s, endpoint={}",
+                policy.max_attempts,
+                policy.base_interval_secs,
+                policy.backoff_multiplier,
+                policy.max_interval_secs,
+                policy.consecutive_failures_threshold,
+                policy.health_check_interval_secs,
+                policy.health_check_endpoint
+            );
+        } else {
+            debug!("No reconnection policy specified in config, defaults will be used if needed");
+        }
+
+        Ok(config)
+    }
+
+    /// Save configuration to a TOML file
+    pub fn to_file(&self, path: &Path) -> Result<(), AkonError> {
+        let contents = toml::to_string_pretty(self).map_err(|e| {
+            AkonError::Config(ConfigError::ValidationError {
+                message: format!("Failed to serialize config: {}", e),
+            })
+        })?;
+
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                AkonError::Config(ConfigError::IoError {
+                    message: format!("Failed to create config directory: {}", e),
+                })
+            })?;
+        }
+
+        std::fs::write(path, contents).map_err(|e| {
+            AkonError::Config(ConfigError::IoError {
+                message: format!("Failed to write config file: {}", e),
+            })
+        })?;
+
+        Ok(())
+    }
+
+    /// Get the VPN configuration
+    pub fn vpn_config(&self) -> &VpnConfig {
+        &self.vpn_config
+    }
+
+    /// Get the reconnection policy, or default if not configured
+    pub fn reconnection_policy(&self) -> Option<&ReconnectionPolicy> {
+        self.reconnection.as_ref()
+    }
+}
 
 /// Default configuration file name
 const CONFIG_FILE_NAME: &str = "config.toml";
@@ -104,6 +210,15 @@ pub fn save_config(config: &VpnConfig) -> Result<(), AkonError> {
     save_config_to_path(config, &config_path)
 }
 
+/// Save VPN configuration with reconnection policy to the default TOML file
+pub fn save_config_with_reconnection(
+    config: &VpnConfig,
+    reconnection: Option<&ReconnectionPolicy>,
+) -> Result<(), AkonError> {
+    let config_path = get_config_path()?;
+    save_complete_config_to_path(config, reconnection, &config_path)
+}
+
 /// Save VPN configuration to a specific TOML file
 pub fn save_config_to_path<P: AsRef<Path>>(config: &VpnConfig, path: P) -> Result<(), AkonError> {
     // Validate configuration before saving
@@ -127,6 +242,59 @@ pub fn save_config_to_path<P: AsRef<Path>>(config: &VpnConfig, path: P) -> Resul
             path: path.as_ref().to_string_lossy().to_string(),
         })
     })?;
+
+    Ok(())
+}
+
+/// Save complete configuration (VPN + reconnection policy) to a specific TOML file
+pub fn save_complete_config_to_path<P: AsRef<Path>>(
+    config: &VpnConfig,
+    reconnection: Option<&ReconnectionPolicy>,
+    path: P,
+) -> Result<(), AkonError> {
+    use tracing::info;
+
+    // Validate configuration before saving
+    config
+        .validate()
+        .map_err(|e| AkonError::Config(ConfigError::ValidationError { message: e }))?;
+
+    // Validate reconnection policy if present
+    if let Some(policy) = reconnection {
+        policy.validate().map_err(|e| {
+            AkonError::Config(ConfigError::ValidationError {
+                message: format!("Invalid reconnection policy: {}", e),
+            })
+        })?;
+    }
+
+    // Ensure config directory exists
+    if let Some(parent) = path.as_ref().parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            AkonError::Config(ConfigError::IoError {
+                message: format!("Failed to create config directory: {}", e),
+            })
+        })?;
+    }
+
+    // Create complete config structure
+    let complete_config = TomlConfig::new(config.clone(), reconnection.cloned());
+
+    // Serialize to TOML
+    let toml_string = toml::to_string_pretty(&complete_config)?;
+
+    // Write to file
+    std::fs::write(&path, toml_string).map_err(|_e| {
+        AkonError::Config(ConfigError::SaveFailed {
+            path: path.as_ref().to_string_lossy().to_string(),
+        })
+    })?;
+
+    if reconnection.is_some() {
+        info!("Saved VPN configuration with reconnection policy to {:?}", path.as_ref());
+    } else {
+        info!("Saved VPN configuration to {:?}", path.as_ref());
+    }
 
     Ok(())
 }

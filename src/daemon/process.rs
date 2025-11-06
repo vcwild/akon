@@ -12,10 +12,12 @@ use tracing::info;
 use akon_core::error::{AkonError, VpnError};
 
 /// Represents a daemon process
+#[allow(dead_code)]
 pub struct DaemonProcess {
     pid_file: PathBuf,
 }
 
+#[allow(dead_code)]
 impl DaemonProcess {
     /// Create a new daemon process manager
     pub fn new(pid_file: PathBuf) -> Self {
@@ -154,6 +156,7 @@ impl Drop for DaemonProcess {
 }
 
 /// Get the default PID file path
+#[allow(dead_code)]
 pub fn get_default_pid_file() -> PathBuf {
     // Use XDG_RUNTIME_DIR if available, otherwise /tmp
     if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
@@ -161,4 +164,139 @@ pub fn get_default_pid_file() -> PathBuf {
     } else {
         Path::new("/tmp").join(format!("akon-{}.pid", nix::unistd::getuid()))
     }
+}
+
+/// Cleanup orphaned OpenConnect processes (T049)
+///
+/// Finds all OpenConnect processes and terminates them gracefully (SIGTERM),
+/// then forcefully (SIGKILL) if they don't respond within 5 seconds.
+///
+/// Returns the number of processes successfully terminated.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Unable to list running processes
+/// - All termination attempts fail (but logs individual failures)
+///
+/// # Example
+///
+/// ```no_run
+/// use akon::daemon::process::cleanup_orphaned_processes;
+///
+/// match cleanup_orphaned_processes() {
+///     Ok(count) => println!("Terminated {} orphaned processes", count),
+///     Err(e) => eprintln!("Cleanup failed: {}", e),
+/// }
+/// ```
+pub fn cleanup_orphaned_processes() -> Result<usize, AkonError> {
+    use std::process::Command;
+    use tracing::{debug, warn};
+
+    // Find all openconnect processes
+    let output = Command::new("pgrep")
+        .arg("-x") // Exact match
+        .arg("openconnect")
+        .output()
+        .map_err(|e| {
+            AkonError::Vpn(VpnError::ConnectionFailed {
+                reason: format!("Failed to search for openconnect processes: {}", e),
+            })
+        })?;
+
+    if !output.status.success() {
+        // No processes found (pgrep returns non-zero when no matches)
+        debug!("No openconnect processes found");
+        return Ok(0);
+    }
+
+    let pids_str = String::from_utf8_lossy(&output.stdout);
+    let pids: Vec<i32> = pids_str
+        .lines()
+        .filter_map(|line| line.trim().parse().ok())
+        .collect();
+
+    if pids.is_empty() {
+        debug!("No openconnect processes to cleanup");
+        return Ok(0);
+    }
+
+    let total_pids = pids.len();
+    info!(
+        "Found {} openconnect process(es) to cleanup: {:?}",
+        total_pids, pids
+    );
+
+    let mut terminated_count = 0;
+
+    for pid in pids {
+        let pid_obj = nix::unistd::Pid::from_raw(pid);
+
+        // Step 1: Send SIGTERM for graceful shutdown
+        debug!("Sending SIGTERM to process {}", pid);
+        match nix::sys::signal::kill(pid_obj, nix::sys::signal::Signal::SIGTERM) {
+            Ok(_) => {
+                debug!("SIGTERM sent to process {}", pid);
+            }
+            Err(nix::errno::Errno::ESRCH) => {
+                // Process already terminated
+                debug!("Process {} already terminated", pid);
+                terminated_count += 1;
+                continue;
+            }
+            Err(nix::errno::Errno::EPERM) => {
+                warn!(
+                    "Permission denied to terminate process {} (owned by different user)",
+                    pid
+                );
+                continue;
+            }
+            Err(e) => {
+                warn!("Failed to send SIGTERM to process {}: {}", pid, e);
+                continue;
+            }
+        }
+
+        // Step 2: Wait 5 seconds for graceful shutdown
+        std::thread::sleep(std::time::Duration::from_secs(5));
+
+        // Step 3: Check if process still exists
+        match nix::sys::signal::kill(pid_obj, None) {
+            Ok(_) => {
+                // Process still running, need SIGKILL
+                warn!(
+                    "Process {} did not respond to SIGTERM, sending SIGKILL",
+                    pid
+                );
+                match nix::sys::signal::kill(pid_obj, nix::sys::signal::Signal::SIGKILL) {
+                    Ok(_) => {
+                        info!("Successfully terminated process {} with SIGKILL", pid);
+                        terminated_count += 1;
+                    }
+                    Err(nix::errno::Errno::ESRCH) => {
+                        // Process terminated between check and SIGKILL
+                        debug!("Process {} terminated before SIGKILL", pid);
+                        terminated_count += 1;
+                    }
+                    Err(e) => {
+                        warn!("Failed to send SIGKILL to process {}: {}", pid, e);
+                    }
+                }
+            }
+            Err(nix::errno::Errno::ESRCH) => {
+                // Process terminated gracefully
+                info!("Process {} terminated gracefully", pid);
+                terminated_count += 1;
+            }
+            Err(e) => {
+                warn!("Error checking process {} status: {}", pid, e);
+            }
+        }
+    }
+
+    info!(
+        "Cleanup complete: terminated {}/{} processes",
+        terminated_count, total_pids
+    );
+    Ok(terminated_count)
 }
