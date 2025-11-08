@@ -12,7 +12,7 @@ mod daemon;
 #[derive(Parser)]
 #[command(name = "akon")]
 #[command(about = "VPN automatic authentication tool")]
-#[command(version = "1.0.0")]
+#[command(version)]
 #[command(disable_help_subcommand = true)]
 struct Cli {
     #[command(subcommand)]

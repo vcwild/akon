@@ -98,25 +98,4 @@ fn test_status_command_suggests_manual_intervention() {
     // TODO: Implement when CLI status command is updated
 }
 
-#[cfg(test)]
-mod test_helpers {
-    // Helper functions for integration tests
 
-    #[allow(dead_code)]
-    fn spawn_test_vpn_connection() {
-        // Helper to spawn a test VPN connection for integration tests
-        // This would set up the full connection flow with test credentials
-    }
-
-    #[allow(dead_code)]
-    fn force_error_state() {
-        // Helper to force the system into Error state for testing
-        // Simulates max attempts exceeded without actual connection attempts
-    }
-
-    #[allow(dead_code)]
-    fn get_connection_state() -> String {
-        // Helper to retrieve current connection state for assertions
-        String::from("Not implemented")
-    }
-}

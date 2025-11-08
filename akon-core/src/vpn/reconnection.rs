@@ -3,8 +3,6 @@
 //! This module provides ReconnectionManager for orchestrating automatic
 //! VPN reconnection when network interruptions occur.
 
-#![allow(dead_code)]
-
 use crate::vpn::state::ConnectionState;
 use tokio::sync::{mpsc, watch};
 use tracing::{debug, error, info};
@@ -292,49 +290,6 @@ impl ReconnectionManager {
 
     /// Handle a network event
     ///
-    /// Processes different types of network events and initiates
-    /// appropriate reconnection actions.
-    ///
-    /// # Arguments
-    ///
-    /// * `event` - The network event to handle
-    #[tracing::instrument(skip(self), fields(event_type = ?event))]
-    pub async fn handle_network_event(&mut self, event: crate::vpn::network_monitor::NetworkEvent) {
-        use crate::vpn::network_monitor::NetworkEvent;
-
-        match event {
-            NetworkEvent::NetworkDown { interface: _ } => {
-                info!("Network down detected, initiating reconnection");
-                // Network down - transition to Disconnected and prepare for reconnection
-                let _ = self.state_tx.send(ConnectionState::Disconnected);
-                // Reconnection will be initiated by the run loop
-            }
-            NetworkEvent::InterfaceChanged {
-                old_interface: _,
-                new_interface: _,
-            } => {
-                info!("Network interface changed, initiating reconnection");
-                // Interface changed - may need to reconnect
-                // Transition to Disconnected and schedule reconnection
-                let _ = self.state_tx.send(ConnectionState::Disconnected);
-            }
-            NetworkEvent::SystemResumed => {
-                info!("System resumed from suspend, checking VPN connection");
-                // System resumed from suspend - check if we need to reconnect
-                let _ = self.state_tx.send(ConnectionState::Disconnected);
-            }
-            NetworkEvent::SystemSuspending => {
-                debug!("System suspending, VPN cleanup will be handled");
-                // System about to suspend - just log, cleanup happens elsewhere
-                // No state change needed
-            }
-            _ => {
-                debug!("Unhandled network event: {:?}", event);
-                // Other events - no action needed
-            }
-        }
-    }
-
     /// Handle health check result
     ///
     /// Tracks consecutive failures and triggers reconnection when threshold is reached.
@@ -530,8 +485,6 @@ impl ReconnectionManager {
 
                 // Handle periodic health checks
                 _ = health_check_timer.tick(), if health_checker.is_some() => {
-                    tracing::info!("Health check timer fired, performing check");
-                    // Only perform health checks when we have a checker
                     if let Some(ref checker) = health_checker {
                         self.handle_health_check(checker).await;
                     }

@@ -11,7 +11,7 @@ install: all
 	sudo install -m 755 target/release/akon /usr/local/bin/akon
 	@echo "✓ Installed to /usr/local/bin/akon"
 	@echo ""
-	@echo "Configuring passwordless sudo for openconnect and pkill..."
+	@echo "Configuring passwordless sudo for openconnect, pkill, and kill..."
 	@if ! command -v openconnect &> /dev/null; then \
 		echo "ERROR: openconnect is not installed"; \
 		echo "Please install it first:"; \
@@ -26,15 +26,26 @@ install: all
 		echo "  RHEL/Fedora:   sudo dnf install procps-ng"; \
 		exit 1; \
 	fi
-	@OPENCONNECT_PATH=$$(which openconnect); \
-	PKILL_PATH=$$(which pkill); \
+	@if [ ! -x /usr/bin/kill ] && [ ! -x /bin/kill ]; then \
+		echo "ERROR: kill binary not found (expected at /usr/bin/kill or /bin/kill)"; \
+		echo "Please ensure coreutils package providing kill is installed."; \
+		exit 1; \
+	fi
+	@OPENCONNECT_PATH=$$(command -v openconnect); \
+	PKILL_PATH=$$(command -v pkill); \
+	if [ -x /usr/bin/kill ]; then \
+		KILL_PATH=/usr/bin/kill; \
+	else \
+		KILL_PATH=/bin/kill; \
+	fi; \
 	SUDOERS_FILE="/etc/sudoers.d/akon"; \
-	echo "# Allow $$USER to run openconnect and pkill without password for akon VPN" | sudo tee $$SUDOERS_FILE > /dev/null; \
+	echo "# Allow $$USER to run openconnect, pkill, and kill without password for akon VPN" | sudo tee $$SUDOERS_FILE > /dev/null; \
 	echo "$$USER ALL=(root) NOPASSWD: $$OPENCONNECT_PATH" | sudo tee -a $$SUDOERS_FILE > /dev/null; \
 	echo "$$USER ALL=(root) NOPASSWD: $$PKILL_PATH" | sudo tee -a $$SUDOERS_FILE > /dev/null; \
+	echo "$$USER ALL=(root) NOPASSWD: $$KILL_PATH" | sudo tee -a $$SUDOERS_FILE > /dev/null; \
 	sudo chmod 0440 $$SUDOERS_FILE; \
 	if sudo visudo -c -f $$SUDOERS_FILE 2>&1 | grep -q "parsed OK"; then \
-		echo "✓ Passwordless sudo configured for openconnect and pkill"; \
+		echo "✓ Passwordless sudo configured for openconnect, pkill, and kill"; \
 	else \
 		echo "ERROR: Invalid sudoers configuration"; \
 		sudo rm -f $$SUDOERS_FILE; \
