@@ -21,6 +21,31 @@ fn state_file_path() -> PathBuf {
     PathBuf::from("/tmp/akon_vpn_state.json")
 }
 
+/// Handle cleanup_orphaned_processes result with user feedback
+fn handle_cleanup_result(result: Result<usize, AkonError>, context: &str) {
+    match result {
+        Ok(0) => {
+            println!("  {} No orphaned processes found", "✓".bright_green());
+            debug!("{}: No orphaned OpenConnect processes to clean up", context);
+        }
+        Ok(count) => {
+            println!(
+                "  {} Terminated {} orphaned process(es)",
+                "✓".bright_green(),
+                count.to_string().bright_yellow()
+            );
+            info!(count, "{}: Terminated orphaned OpenConnect processes", context);
+        }
+        Err(e) => {
+            warn!("{}: Orphan cleanup failed: {}", context, e);
+            println!(
+                "  {} Warning: Could not verify all processes cleaned up",
+                "⚠".bright_yellow()
+            );
+        }
+    }
+}
+
 /// Print actionable suggestions based on VPN error type
 fn print_error_suggestions(error: &VpnError) {
     match error {
@@ -140,50 +165,22 @@ fn print_error_suggestions(error: &VpnError) {
 async fn perform_reconnection(
     config: akon_core::config::VpnConfig,
 ) -> Result<(), AkonError> {
-    use crate::daemon::process::cleanup_orphaned_processes;
-
     info!("Performing VPN reconnection");
 
     // Step 1: Cleanup all stale OpenConnect processes
-    // Use sudo to ensure we can kill processes started with sudo
-    info!("Cleaning up stale OpenConnect processes with elevated privileges");
+    info!("Cleaning up stale OpenConnect processes");
 
-    // First try with sudo pkill for more reliable cleanup
-    match std::process::Command::new("sudo")
-        .arg("-n") // Non-interactive, fail if password required
-        .arg("pkill")
-        .arg("-TERM") // Send SIGTERM
-        .arg("openconnect")
-        .output()
-    {
-        Ok(output) => {
-            if output.status.success() {
-                info!("Sent SIGTERM to openconnect processes via sudo");
-                // Wait for graceful termination
-                tokio::time::sleep(Duration::from_secs(2)).await;
-
-                // Force kill any remaining processes
-                let _ = std::process::Command::new("sudo")
-                    .arg("-n")
-                    .arg("pkill")
-                    .arg("-KILL")
-                    .arg("openconnect")
-                    .output();
+    match cleanup_orphaned_processes() {
+        Ok(count) => {
+            if count > 0 {
+                info!("Terminated {} orphaned process(es) before reconnection", count);
             } else {
-                warn!("sudo pkill failed, falling back to regular cleanup");
-                // Fall back to regular cleanup
-                match cleanup_orphaned_processes() {
-                    Ok(count) => info!("Terminated {} processes via fallback cleanup", count),
-                    Err(e) => warn!("Fallback cleanup also failed: {}", e),
-                }
+                debug!("No orphaned processes found before reconnection");
             }
         }
         Err(e) => {
-            warn!("Failed to execute sudo pkill: {}, trying regular cleanup", e);
-            match cleanup_orphaned_processes() {
-                Ok(count) => info!("Terminated {} processes via regular cleanup", count),
-                Err(e) => warn!("Regular cleanup failed: {}", e),
-            }
+            warn!("Cleanup failed before reconnection: {}", e);
+            // Continue anyway - reconnection might still work
         }
     }
 
@@ -826,27 +823,8 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
 
         info!("No active connection, scanning for orphaned processes");
 
-        match cleanup_orphaned_processes() {
-            Ok(0) => {
-                println!("  {} No orphaned processes found", "✓".bright_green());
-                debug!("No orphaned OpenConnect processes to clean up");
-            }
-            Ok(count) => {
-                println!(
-                    "  {} Terminated {} orphaned process(es)",
-                    "✓".bright_green(),
-                    count.to_string().bright_yellow()
-                );
-                info!(count, "Terminated orphaned OpenConnect processes");
-            }
-            Err(e) => {
-                warn!("Orphan cleanup failed: {}", e);
-                println!(
-                    "  {} Warning: Could not verify all processes cleaned up",
-                    "⚠".bright_yellow()
-                );
-            }
-        }
+        let result = cleanup_orphaned_processes();
+        handle_cleanup_result(result, "run_vpn_off (no state)");
 
         return Ok(());
     }
@@ -992,27 +970,8 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
 
     info!("Starting comprehensive cleanup of orphaned processes");
 
-    match cleanup_orphaned_processes() {
-        Ok(0) => {
-            println!("  {} No orphaned processes found", "✓".bright_green());
-            debug!("No additional orphaned processes to clean up");
-        }
-        Ok(count) => {
-            println!(
-                "  {} Terminated {} orphaned process(es)",
-                "✓".bright_green(),
-                count.to_string().bright_yellow()
-            );
-            info!(count, "Terminated orphaned OpenConnect processes");
-        }
-        Err(e) => {
-            warn!("Orphan cleanup failed: {}", e);
-            println!(
-                "  {} Warning: Could not verify all processes cleaned up",
-                "⚠".bright_yellow()
-            );
-        }
-    }
+    let result = cleanup_orphaned_processes();
+    handle_cleanup_result(result, "run_vpn_off (after disconnect)");
 
     println!(
         "{} {}",
