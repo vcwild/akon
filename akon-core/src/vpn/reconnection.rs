@@ -487,7 +487,7 @@ impl ReconnectionManager {
                                 *counter = 0;
                             }
 
-                            tracing::info!("State set to Connected, health checks will now run");
+                            tracing::info!("State set to Connected, health check monitoring enabled");
                         }
                         ReconnectionCommand::CheckNow => {
                             // Immediate health check
