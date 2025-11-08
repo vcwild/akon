@@ -60,7 +60,10 @@ pub fn cleanup_orphaned_processes() -> Result<usize, AkonError> {
             .status()
         {
             Ok(status) if status.success() => {
-                debug!("Elevated kill succeeded for process {} with {:?}", pid, signal);
+                debug!(
+                    "Elevated kill succeeded for process {} with {:?}",
+                    pid, signal
+                );
                 true
             }
             Ok(status) => {
@@ -75,9 +78,7 @@ pub fn cleanup_orphaned_processes() -> Result<usize, AkonError> {
             Err(e) => {
                 warn!(
                     "Failed to invoke sudo when sending {:?} to process {}: {}",
-                    signal,
-                    pid,
-                    e
+                    signal, pid, e
                 );
                 false
             }
@@ -175,18 +176,12 @@ pub fn cleanup_orphaned_processes() -> Result<usize, AkonError> {
                                     pid
                                 );
                             } else {
-                                info!(
-                                    "Successfully terminated process {} with SIGKILL",
-                                    pid
-                                );
+                                info!("Successfully terminated process {} with SIGKILL", pid);
                                 terminated_count += 1;
                             }
                         }
                         SignalResult::AlreadyExited => {
-                            debug!(
-                                "Process {} exited while escalating to SIGKILL",
-                                pid
-                            );
+                            debug!("Process {} exited while escalating to SIGKILL", pid);
                             terminated_count += 1;
                         }
                         SignalResult::NotPermitted => {

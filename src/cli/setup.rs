@@ -41,7 +41,7 @@ pub fn run_setup() -> Result<(), AkonError> {
             "⚠".bright_yellow(),
             "Existing configuration detected.".bright_yellow()
         );
-        if !prompt_yes_no("Overwrite existing setup? (y/N)", false)? {
+        if !prompt_yes_no("Overwrite existing setup?", false)? {
             println!("{}", "Setup cancelled.".dimmed());
             return Ok(());
         }
@@ -151,11 +151,11 @@ fn collect_vpn_config() -> Result<VpnConfig, AkonError> {
         .parse()
         .ok();
 
-    let no_dtls_input = prompt_optional("Disable DTLS (use TCP only)? (y/N)", "n")?;
+    let no_dtls_input = prompt_optional("Disable DTLS (use TCP only)?", "y")?;
     let no_dtls = matches!(no_dtls_input.trim().to_lowercase().as_str(), "y" | "yes");
 
     let lazy_mode_input = prompt_optional(
-        "Enable lazy mode (connect VPN when running akon without arguments)? (y/N)",
+        "Enable lazy mode (connect VPN when running akon without arguments)?",
         "n",
     )?;
     let lazy_mode = matches!(lazy_mode_input.trim().to_lowercase().as_str(), "y" | "yes");
@@ -171,7 +171,8 @@ fn collect_vpn_config() -> Result<VpnConfig, AkonError> {
 }
 
 /// Collect reconnection configuration interactively
-fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::ReconnectionPolicy>, AkonError> {
+fn collect_reconnection_config(
+) -> Result<Option<akon_core::vpn::reconnection::ReconnectionPolicy>, AkonError> {
     use akon_core::vpn::reconnection::ReconnectionPolicy;
 
     println!();
@@ -180,8 +181,11 @@ fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::
     println!("Configure automatic reconnection when network interruptions occur.");
     println!();
 
-    if !prompt_yes_no("Configure automatic reconnection? (Y/n)", true)? {
-        println!("{}", "Skipping reconnection config - defaults will be used if needed.".dimmed());
+    if !prompt_yes_no("Configure automatic reconnection?", true)? {
+        println!(
+            "{}",
+            "Skipping reconnection config - defaults will be used if needed.".dimmed()
+        );
         return Ok(None);
     }
 
@@ -191,18 +195,25 @@ fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::
 
     // Health check endpoint (required for reconnection)
     println!("Enter the health check endpoint (HTTP/HTTPS URL to verify connectivity)");
-    println!("{}", "Example: https://vpn-gateway.example.com/health".dimmed());
+    println!(
+        "{}",
+        "Example: https://vpn-gateway.example.com/health".dimmed()
+    );
     let health_check_endpoint = prompt_required("Health Check Endpoint", "https://www.google.com")?;
 
     // Validate URL
-    if !health_check_endpoint.starts_with("http://") && !health_check_endpoint.starts_with("https://") {
-        return Err(AkonError::Config(akon_core::error::ConfigError::ValidationError {
-            message: "Health check endpoint must be an HTTP or HTTPS URL".to_string(),
-        }));
+    if !health_check_endpoint.starts_with("http://")
+        && !health_check_endpoint.starts_with("https://")
+    {
+        return Err(AkonError::Config(
+            akon_core::error::ConfigError::ValidationError {
+                message: "Health check endpoint must be an HTTP or HTTPS URL".to_string(),
+            },
+        ));
     }
 
     println!();
-    if !prompt_yes_no("Configure advanced reconnection settings? (y/N)", false)? {
+    if !prompt_yes_no("Configure advanced reconnection settings?", false)? {
         // Use defaults for everything else
         let policy = ReconnectionPolicy {
             max_attempts: 5,
@@ -241,7 +252,10 @@ fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::
     // Backoff multiplier
     println!();
     println!("Exponential backoff multiplier (1-10)");
-    println!("{}", "Intervals will be: base × multiplier^(attempt-1)".dimmed());
+    println!(
+        "{}",
+        "Intervals will be: base × multiplier^(attempt-1)".dimmed()
+    );
     let backoff_multiplier_str = prompt_optional("Backoff Multiplier", "2")?;
     let backoff_multiplier = backoff_multiplier_str.parse::<u32>().unwrap_or(2);
 
@@ -281,7 +295,11 @@ fn collect_reconnection_config() -> Result<Option<akon_core::vpn::reconnection::
     })?;
 
     println!();
-    println!("{} {}", "✓".bright_green(), "Reconnection configuration validated".bright_green());
+    println!(
+        "{} {}",
+        "✓".bright_green(),
+        "Reconnection configuration validated".bright_green()
+    );
 
     Ok(Some(policy))
 }

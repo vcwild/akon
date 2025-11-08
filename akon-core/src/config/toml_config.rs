@@ -190,18 +190,26 @@ pub fn load_config_from_path<P: AsRef<Path>>(path: P) -> Result<VpnConfig, AkonE
         }),
     })?;
 
-    let config: VpnConfig = toml::from_str(&contents).map_err(|e| {
-        AkonError::Config(ConfigError::IoError {
-            message: format!("Failed to parse TOML: {}", e),
-        })
-    })?;
+    // Support both historical formats: nested [vpn] table and flat top-level fields.
+    let parsed_vpn_config = toml::from_str::<TomlConfig>(&contents)
+        .map(|complete| complete.vpn_config)
+        .or_else(|nested_err| {
+            toml::from_str::<VpnConfig>(&contents).map_err(|flat_err| {
+                AkonError::Config(ConfigError::ValidationError {
+                    message: format!(
+                        "Failed to parse config file as either TomlConfig ({}) or VpnConfig ({})",
+                        nested_err, flat_err
+                    ),
+                })
+            })
+        })?;
 
     // Validate the loaded configuration
-    config
+    parsed_vpn_config
         .validate()
         .map_err(|e| AkonError::Config(ConfigError::ValidationError { message: e }))?;
 
-    Ok(config)
+    Ok(parsed_vpn_config)
 }
 
 /// Save VPN configuration to the default TOML file
@@ -291,7 +299,10 @@ pub fn save_complete_config_to_path<P: AsRef<Path>>(
     })?;
 
     if reconnection.is_some() {
-        info!("Saved VPN configuration with reconnection policy to {:?}", path.as_ref());
+        info!(
+            "Saved VPN configuration with reconnection policy to {:?}",
+            path.as_ref()
+        );
     } else {
         info!("Saved VPN configuration to {:?}", path.as_ref());
     }
@@ -344,5 +355,29 @@ mod tests {
         for config in invalid_configs {
             assert!(config.validate().is_err());
         }
+    }
+
+    #[test]
+    fn test_load_config_supports_nested_vpn_table() {
+        let dir = tempdir().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        std::fs::write(
+            &config_path,
+            r#"
+[vpn]
+server = "vpn.example.com"
+username = "testuser"
+protocol = "f5"
+lazy_mode = true
+"#,
+        )
+        .unwrap();
+
+        let config = load_config_from_path(&config_path).expect("should parse nested config");
+        assert_eq!(config.server, "vpn.example.com");
+        assert_eq!(config.username, "testuser");
+        assert_eq!(config.protocol, VpnProtocol::F5);
+        assert!(config.lazy_mode);
     }
 }

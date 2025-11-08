@@ -184,13 +184,14 @@ async fn handle_daemon_invocation(args: Vec<String>) {
     let policy_json = &args[2];
     let config_json = &args[3];
 
-    let policy: akon_core::vpn::reconnection::ReconnectionPolicy = match serde_json::from_str(policy_json) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("Daemon: Failed to parse reconnection policy: {}", e);
-            std::process::exit(2);
-        }
-    };
+    let policy: akon_core::vpn::reconnection::ReconnectionPolicy =
+        match serde_json::from_str(policy_json) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Daemon: Failed to parse reconnection policy: {}", e);
+                std::process::exit(2);
+            }
+        };
 
     let config: akon_core::config::VpnConfig = match serde_json::from_str(config_json) {
         Ok(c) => c,

@@ -44,11 +44,9 @@ async fn test_health_check_failure_triggers_reconnection() {
     let _config = create_test_vpn_config();
 
     // Create health checker with failing endpoint
-    let health_checker = HealthChecker::new(
-        policy.health_check_endpoint.clone(),
-        Duration::from_secs(1),
-    )
-    .expect("Failed to create health checker");
+    let health_checker =
+        HealthChecker::new(policy.health_check_endpoint.clone(), Duration::from_secs(1))
+            .expect("Failed to create health checker");
 
     // Create reconnection manager
     let manager = ReconnectionManager::new(policy.clone());
@@ -100,7 +98,9 @@ async fn test_health_check_failure_triggers_reconnection() {
                 // (Disconnected is set before transition to Reconnecting)
                 match state {
                     ConnectionState::Disconnected => {
-                        println!("Detected Disconnected state (triggered by health check failures)");
+                        println!(
+                            "Detected Disconnected state (triggered by health check failures)"
+                        );
                         return Some(state);
                     }
                     ConnectionState::Reconnecting { attempt, .. } => {
@@ -146,11 +146,9 @@ async fn test_successful_health_checks_prevent_reconnection() {
     let _config = create_test_vpn_config();
 
     // Create health checker with working endpoint
-    let health_checker = HealthChecker::new(
-        policy.health_check_endpoint.clone(),
-        Duration::from_secs(5),
-    )
-    .expect("Failed to create health checker");
+    let health_checker =
+        HealthChecker::new(policy.health_check_endpoint.clone(), Duration::from_secs(5))
+            .expect("Failed to create health checker");
 
     // Create reconnection manager
     let manager = ReconnectionManager::new(policy.clone());
@@ -191,7 +189,10 @@ async fn test_successful_health_checks_prevent_reconnection() {
                 let state = state_rx.borrow().clone();
 
                 // If we detect any reconnection attempt, return true
-                if matches!(state, ConnectionState::Disconnected | ConnectionState::Reconnecting { .. }) {
+                if matches!(
+                    state,
+                    ConnectionState::Disconnected | ConnectionState::Reconnecting { .. }
+                ) {
                     return true;
                 }
             }
@@ -271,7 +272,10 @@ async fn test_consecutive_failure_threshold() {
         loop {
             if state_rx.changed().await.is_ok() {
                 let state = state_rx.borrow().clone();
-                if matches!(state, ConnectionState::Disconnected | ConnectionState::Reconnecting { .. }) {
+                if matches!(
+                    state,
+                    ConnectionState::Disconnected | ConnectionState::Reconnecting { .. }
+                ) {
                     return true;
                 }
             }
@@ -302,11 +306,9 @@ async fn test_manual_health_check_command() {
     let _config = create_test_vpn_config();
 
     // Create health checker
-    let health_checker = HealthChecker::new(
-        policy.health_check_endpoint.clone(),
-        Duration::from_secs(5),
-    )
-    .expect("Failed to create health checker");
+    let health_checker =
+        HealthChecker::new(policy.health_check_endpoint.clone(), Duration::from_secs(5))
+            .expect("Failed to create health checker");
 
     // Create manager
     let manager = ReconnectionManager::new(policy);
@@ -469,7 +471,9 @@ async fn test_reconnection_attempt_after_disconnect() {
         "Expected to see Reconnecting state indicating reconnection attempt"
     );
 
-    println!("✓ Test passed: Reconnection manager correctly attempts reconnection after disconnect");
+    println!(
+        "✓ Test passed: Reconnection manager correctly attempts reconnection after disconnect"
+    );
 }
 
 #[tokio::test]
@@ -575,7 +579,9 @@ async fn test_multiple_reconnection_attempts_with_backoff() {
         );
     }
 
-    println!("✓ Test passed: Multiple reconnection attempts with exponential backoff executed correctly");
+    println!(
+        "✓ Test passed: Multiple reconnection attempts with exponential backoff executed correctly"
+    );
 }
 
 #[tokio::test]

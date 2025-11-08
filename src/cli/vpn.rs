@@ -36,7 +36,10 @@ fn handle_cleanup_result(result: Result<usize, AkonError>, context: &str) {
                 "✓".bright_green(),
                 count.to_string().bright_yellow()
             );
-            info!(count, "{}: Terminated orphaned OpenConnect processes", context);
+            info!(
+                count,
+                "{}: Terminated orphaned OpenConnect processes", context
+            );
         }
         Err(e) => {
             warn!("{}: Orphan cleanup failed: {}", context, e);
@@ -164,9 +167,7 @@ fn print_error_suggestions(error: &VpnError) {
 }
 
 /// Perform VPN reconnection by cleaning up stale processes and establishing new connection
-async fn perform_reconnection(
-    config: akon_core::config::VpnConfig,
-) -> Result<(), AkonError> {
+async fn perform_reconnection(config: akon_core::config::VpnConfig) -> Result<(), AkonError> {
     info!("Performing VPN reconnection");
 
     // Step 1: Cleanup all stale OpenConnect processes
@@ -175,7 +176,10 @@ async fn perform_reconnection(
     match cleanup_orphaned_processes() {
         Ok(count) => {
             if count > 0 {
-                info!("Terminated {} orphaned process(es) before reconnection", count);
+                info!(
+                    "Terminated {} orphaned process(es) before reconnection",
+                    count
+                );
             } else {
                 debug!("No orphaned processes found before reconnection");
             }
@@ -239,7 +243,9 @@ async fn perform_reconnection(
         Err(AkonError::Vpn(VpnError::ConnectionFailed {
             reason: "Connection closed unexpectedly during reconnection".to_string(),
         }))
-    }).await {
+    })
+    .await
+    {
         Ok(result) => result,
         Err(_) => {
             error!("Reconnection timeout after 60 seconds");
@@ -315,7 +321,10 @@ fn spawn_reconnection_manager_daemon(
             })
         })?;
 
-    info!("Reconnection manager daemon spawned with PID {}", child.id());
+    info!(
+        "Reconnection manager daemon spawned with PID {}",
+        child.id()
+    );
 
     // Save daemon PID to file for tracking
     let daemon_pid_file = get_daemon_pid_file();
@@ -341,31 +350,35 @@ pub async fn run_reconnection_manager_daemon(
     let health_checker = HealthChecker::new(
         policy.health_check_endpoint.clone(),
         Duration::from_secs(5), // 5 second timeout per health check
-    ).map_err(|e| {
+    )
+    .map_err(|e| {
         error!("Failed to create HealthChecker: {}", e);
         AkonError::Vpn(VpnError::ConnectionFailed {
             reason: format!("Failed to initialize health checker: {}", e),
         })
     })?;
-    info!("HealthChecker initialized with endpoint: {}, interval: {}s",
-          policy.health_check_endpoint,
-          policy.health_check_interval_secs);
+    info!(
+        "HealthChecker initialized with endpoint: {}, interval: {}s",
+        policy.health_check_endpoint, policy.health_check_interval_secs
+    );
 
     // Create ReconnectionManager
     let reconnection_manager = ReconnectionManager::new(policy.clone());
     let command_tx = reconnection_manager.command_sender();
     let mut state_rx = reconnection_manager.state_receiver();
-    info!("ReconnectionManager created with max_attempts={}, base_interval={}s, backoff={}x",
-          policy.max_attempts,
-          policy.base_interval_secs,
-          policy.backoff_multiplier);
+    info!(
+        "ReconnectionManager created with max_attempts={}, base_interval={}s, backoff={}x",
+        policy.max_attempts, policy.base_interval_secs, policy.backoff_multiplier
+    );
 
     // Set initial state to Connected since VPN is already up
     use akon_core::vpn::reconnection::ReconnectionCommand;
-    command_tx.send(ReconnectionCommand::SetConnected {
-        server: config.server.clone(),
-        username: config.username.clone(),
-    }).ok();
+    command_tx
+        .send(ReconnectionCommand::SetConnected {
+            server: config.server.clone(),
+            username: config.username.clone(),
+        })
+        .ok();
     info!("Set reconnection manager state to Connected");
 
     // Spawn a task to watch for reconnection state changes and trigger actual reconnection
@@ -377,8 +390,8 @@ pub async fn run_reconnection_manager_daemon(
     let reconnection_state_clone = reconnection_state.clone();
 
     tokio::spawn(async move {
-        use akon_core::vpn::state::ConnectionState;
         use akon_core::vpn::reconnection::ReconnectionCommand;
+        use akon_core::vpn::state::ConnectionState;
 
         loop {
             // Wait for state changes
@@ -390,7 +403,11 @@ pub async fn run_reconnection_manager_daemon(
 
             // T053: Update state file with current reconnection state
             match &state {
-                ConnectionState::Reconnecting { attempt, next_retry_at, max_attempts } => {
+                ConnectionState::Reconnecting {
+                    attempt,
+                    next_retry_at,
+                    max_attempts,
+                } => {
                     // Check if we should process this attempt
                     let mut reconnection_info = reconnection_state_clone.lock().await;
                     let (in_progress, last_attempt) = *reconnection_info;
@@ -399,7 +416,10 @@ pub async fn run_reconnection_manager_daemon(
                     // 1. A reconnection is already in progress, OR
                     // 2. We've already processed this attempt number
                     if in_progress {
-                        info!("Reconnection already in progress, skipping attempt {}", attempt);
+                        info!(
+                            "Reconnection already in progress, skipping attempt {}",
+                            attempt
+                        );
                         let state_json = serde_json::json!({
                             "state": "Reconnecting",
                             "attempt": attempt,
@@ -439,7 +459,10 @@ pub async fn run_reconnection_manager_daemon(
                     // Perform the actual reconnection
                     match perform_reconnection(config_for_watcher.clone()).await {
                         Ok(_) => {
-                            info!("Reconnection attempt {} successful, transitioning to Connected", attempt);
+                            info!(
+                                "Reconnection attempt {} successful, transitioning to Connected",
+                                attempt
+                            );
                             // Set state to Connected to stop the retry loop
                             let _ = command_tx.send(ReconnectionCommand::SetConnected {
                                 server: config_for_watcher.server.clone(),
@@ -459,7 +482,7 @@ pub async fn run_reconnection_manager_daemon(
                             // Mark reconnection as complete so next attempt can proceed
                             let mut reconnection_info = reconnection_state_clone.lock().await;
                             reconnection_info.0 = false; // Clear in_progress flag
-                            // Keep last_attempt so we don't retry the same attempt
+                                                         // Keep last_attempt so we don't retry the same attempt
                         }
                     }
                 }
@@ -593,7 +616,8 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                             println!(
                                 "{} {}",
                                 "🔄".bright_yellow(),
-                                "Force reconnection requested - disconnecting and resetting...".bright_yellow()
+                                "Force reconnection requested - disconnecting and resetting..."
+                                    .bright_yellow()
                             );
 
                             // Disconnect the existing connection
