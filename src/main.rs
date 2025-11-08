@@ -79,7 +79,7 @@ enum Commands {
 enum VpnCommands {
     /// Connect to VPN
     On {
-        /// Force reconnection even if already connected
+        /// Force reconnection (disconnects existing connection and resets state)
         #[arg(short, long)]
         force: bool,
     },
@@ -87,10 +87,6 @@ enum VpnCommands {
     Off,
     /// Show VPN connection status
     Status,
-    /// Cleanup orphaned OpenConnect processes
-    Cleanup,
-    /// Reset reconnection retry counter and error states
-    Reset,
 }
 
 #[tokio::main]
@@ -117,8 +113,6 @@ async fn main() {
             VpnCommands::On { force } => cli::vpn::run_vpn_on(force).await,
             VpnCommands::Off => cli::vpn::run_vpn_off().await,
             VpnCommands::Status => cli::vpn::run_vpn_status(),
-            VpnCommands::Cleanup => cli::vpn::run_vpn_cleanup().await,
-            VpnCommands::Reset => cli::vpn::run_vpn_reset().await,
         },
         Some(Commands::GetPassword) => cli::get_password::run_get_password(),
         None => {

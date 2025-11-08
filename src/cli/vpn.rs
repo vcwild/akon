@@ -2,6 +2,7 @@
 //!
 //! CLI-based OpenConnect integration using process delegation
 
+use crate::daemon::process::cleanup_orphaned_processes;
 use akon_core::auth::password::generate_password;
 use akon_core::config::toml_config::{get_config_path, TomlConfig};
 use akon_core::error::{AkonError, VpnError};
@@ -18,6 +19,31 @@ use tracing::{debug, error, info, warn};
 /// State file for tracking VPN connection
 fn state_file_path() -> PathBuf {
     PathBuf::from("/tmp/akon_vpn_state.json")
+}
+
+/// Handle cleanup_orphaned_processes result with user feedback
+fn handle_cleanup_result(result: Result<usize, AkonError>, context: &str) {
+    match result {
+        Ok(0) => {
+            println!("  {} No orphaned processes found", "✓".bright_green());
+            debug!("{}: No orphaned OpenConnect processes to clean up", context);
+        }
+        Ok(count) => {
+            println!(
+                "  {} Terminated {} orphaned process(es)",
+                "✓".bright_green(),
+                count.to_string().bright_yellow()
+            );
+            info!(count, "{}: Terminated orphaned OpenConnect processes", context);
+        }
+        Err(e) => {
+            warn!("{}: Orphan cleanup failed: {}", context, e);
+            println!(
+                "  {} Warning: Could not verify all processes cleaned up",
+                "⚠".bright_yellow()
+            );
+        }
+    }
 }
 
 /// Print actionable suggestions based on VPN error type
@@ -139,50 +165,22 @@ fn print_error_suggestions(error: &VpnError) {
 async fn perform_reconnection(
     config: akon_core::config::VpnConfig,
 ) -> Result<(), AkonError> {
-    use crate::daemon::process::cleanup_orphaned_processes;
-
     info!("Performing VPN reconnection");
 
     // Step 1: Cleanup all stale OpenConnect processes
-    // Use sudo to ensure we can kill processes started with sudo
-    info!("Cleaning up stale OpenConnect processes with elevated privileges");
+    info!("Cleaning up stale OpenConnect processes");
 
-    // First try with sudo pkill for more reliable cleanup
-    match std::process::Command::new("sudo")
-        .arg("-n") // Non-interactive, fail if password required
-        .arg("pkill")
-        .arg("-TERM") // Send SIGTERM
-        .arg("openconnect")
-        .output()
-    {
-        Ok(output) => {
-            if output.status.success() {
-                info!("Sent SIGTERM to openconnect processes via sudo");
-                // Wait for graceful termination
-                tokio::time::sleep(Duration::from_secs(2)).await;
-
-                // Force kill any remaining processes
-                let _ = std::process::Command::new("sudo")
-                    .arg("-n")
-                    .arg("pkill")
-                    .arg("-KILL")
-                    .arg("openconnect")
-                    .output();
+    match cleanup_orphaned_processes() {
+        Ok(count) => {
+            if count > 0 {
+                info!("Terminated {} orphaned process(es) before reconnection", count);
             } else {
-                warn!("sudo pkill failed, falling back to regular cleanup");
-                // Fall back to regular cleanup
-                match cleanup_orphaned_processes() {
-                    Ok(count) => info!("Terminated {} processes via fallback cleanup", count),
-                    Err(e) => warn!("Fallback cleanup also failed: {}", e),
-                }
+                debug!("No orphaned processes found before reconnection");
             }
         }
         Err(e) => {
-            warn!("Failed to execute sudo pkill: {}, trying regular cleanup", e);
-            match cleanup_orphaned_processes() {
-                Ok(count) => info!("Terminated {} processes via regular cleanup", count),
-                Err(e) => warn!("Regular cleanup failed: {}", e),
-            }
+            warn!("Cleanup failed before reconnection: {}", e);
+            // Continue anyway - reconnection might still work
         }
     }
 
@@ -585,15 +583,15 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
 
                     if process_running {
                         if force {
-                            // Force reconnection - disconnect first
+                            // Force reconnection - disconnect first and reset state
                             info!(
-                                "Force flag set, disconnecting existing connection (PID: {})",
+                                "Force flag set, disconnecting existing connection (PID: {}) and resetting state",
                                 pid
                             );
                             println!(
                                 "{} {}",
                                 "🔄".bright_yellow(),
-                                "Force reconnection requested - disconnecting existing connection...".bright_yellow()
+                                "Force reconnection requested - disconnecting and resetting...".bright_yellow()
                             );
 
                             // Disconnect the existing connection
@@ -619,8 +617,10 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                                     .status();
                             }
 
-                            // Clean up state
+                            // Clean up state file (reset functionality)
                             let _ = fs::remove_file(&state_path);
+                            println!("  {} Cleared connection state", "✓".bright_green());
+                            info!("Force flag cleared state file (reset)");
                         } else {
                             // Connection is already active - return early
                             println!(
@@ -802,6 +802,9 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
 }
 
 /// Run the VPN off command
+///
+/// Disconnects from VPN by terminating the tracked OpenConnect process and
+/// cleaning up any orphaned OpenConnect processes from previous sessions.
 pub async fn run_vpn_off() -> Result<(), AkonError> {
     use nix::unistd::Pid;
 
@@ -810,6 +813,19 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
 
     if !state_path.exists() {
         println!("No active VPN connection found");
+
+        // Still check for and clean up any orphaned OpenConnect processes
+        println!(
+            "{} {}",
+            "🧹".bright_yellow(),
+            "Checking for orphaned OpenConnect processes...".bright_white()
+        );
+
+        info!("No active connection, scanning for orphaned processes");
+
+        let result = cleanup_orphaned_processes();
+        handle_cleanup_result(result, "run_vpn_off (no state)");
+
         return Ok(());
     }
 
@@ -940,9 +956,28 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
     })?;
 
     info!("State file cleaned up");
+    debug!("Removed state file at {:?}", state_path);
 
     // Stop reconnection manager daemon if running
     stop_reconnection_manager_daemon();
+
+    // Comprehensive cleanup: Terminate any orphaned OpenConnect processes
+    println!(
+        "{} {}",
+        "🧹".bright_yellow(),
+        "Cleaning up any orphaned OpenConnect processes...".bright_white()
+    );
+
+    info!("Starting comprehensive cleanup of orphaned processes");
+
+    let result = cleanup_orphaned_processes();
+    handle_cleanup_result(result, "run_vpn_off (after disconnect)");
+
+    println!(
+        "{} {}",
+        "✓".bright_green(),
+        "Disconnect complete".bright_green().bold()
+    );
 
     Ok(())
 }
@@ -1012,19 +1047,14 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
             "Manual intervention required:".bright_white().bold()
         );
         println!(
-            "  {} Run {} to terminate orphaned processes",
+            "  {} Run {} to disconnect",
             "1.".bright_yellow(),
-            "akon vpn cleanup".bright_cyan()
+            "akon vpn off".bright_cyan()
         );
         println!(
-            "  {} Run {} to clear retry counter",
+            "  {} Run {} to reconnect with reset",
             "2.".bright_yellow(),
-            "akon vpn reset".bright_cyan()
-        );
-        println!(
-            "  {} Run {} to reconnect",
-            "3.".bright_yellow(),
-            "akon vpn on".bright_cyan()
+            "akon vpn on --force".bright_cyan()
         );
 
         std::process::exit(3);
@@ -1177,153 +1207,6 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
             );
         }
     }
-
-    Ok(())
-}
-
-/// Run the VPN cleanup command (T051)
-///
-/// Terminates all orphaned OpenConnect processes and updates connection state
-pub async fn run_vpn_cleanup() -> Result<(), AkonError> {
-    use crate::daemon::process::cleanup_orphaned_processes;
-
-    println!(
-        "{} {}",
-        "🧹".bright_yellow(),
-        "Cleaning up orphaned OpenConnect processes..."
-            .bright_white()
-            .bold()
-    );
-
-    match cleanup_orphaned_processes() {
-        Ok(count) => {
-            if count == 0 {
-                println!("  {} No orphaned processes found", "✓".bright_green());
-            } else {
-                println!(
-                    "  {} Terminated {} process(es)",
-                    "✓".bright_green(),
-                    count.to_string().bright_yellow().bold()
-                );
-
-                // Update connection state to Disconnected
-                let state_path = state_file_path();
-                if state_path.exists() {
-                    if let Err(e) = fs::remove_file(&state_path) {
-                        warn!("Failed to remove state file: {}", e);
-                    } else {
-                        debug!("Removed state file after cleanup");
-                    }
-                }
-            }
-
-            println!(
-                "{} {}",
-                "✓".bright_green(),
-                "Cleanup complete".bright_green().bold()
-            );
-
-            Ok(())
-        }
-        Err(e) => {
-            error!("Failed to cleanup processes: {}", e);
-            eprintln!(
-                "{} {}",
-                "✗".bright_red(),
-                "Cleanup failed".bright_red().bold()
-            );
-            eprintln!("  {} {}", "Error:".bright_white(), e);
-
-            eprintln!(
-                "\n{} {}",
-                "💡".bright_yellow(),
-                "Suggestions:".bright_white().bold()
-            );
-            eprintln!(
-                "   {} Check for permission issues (may need sudo)",
-                "•".bright_blue()
-            );
-            eprintln!(
-                "   {} Manually check processes: {}",
-                "•".bright_blue(),
-                "ps aux | grep openconnect".bright_cyan()
-            );
-            eprintln!(
-                "   {} Review system logs: {}",
-                "•".bright_blue(),
-                "journalctl -xe".bright_cyan()
-            );
-
-            Err(e)
-        }
-    }
-}
-
-/// Run the VPN reset command (T052)
-///
-/// Resets the reconnection retry counter and clears error states
-pub async fn run_vpn_reset() -> Result<(), AkonError> {
-    // ReconnectionCommand is available but not yet integrated with IPC
-
-    println!(
-        "{} {}",
-        "🔄".bright_yellow(),
-        "Resetting reconnection state...".bright_white().bold()
-    );
-
-    // TODO: This requires IPC channel to send command to ReconnectionManager
-    // For now, we'll provide a manual workaround
-
-    println!(
-        "  {} This feature requires integration with the VPN daemon",
-        "ℹ".bright_blue()
-    );
-    println!(
-        "  {} Disconnect and reconnect:",
-        "Workaround:".bright_white().bold()
-    );
-    println!(
-        "    {} {}",
-        "1.".bright_yellow(),
-        "akon vpn off".bright_cyan()
-    );
-    println!(
-        "    {} {}",
-        "2.".bright_yellow(),
-        "akon vpn cleanup".bright_cyan()
-    );
-    println!(
-        "    {} {}",
-        "3.".bright_yellow(),
-        "akon vpn on".bright_cyan()
-    );
-
-    // Clear state file as a basic reset
-    let state_path = state_file_path();
-    if state_path.exists() {
-        match fs::remove_file(&state_path) {
-            Ok(_) => {
-                println!("  {} Cleared connection state", "✓".bright_green());
-                info!("Reset command cleared state file");
-            }
-            Err(e) => {
-                warn!("Failed to remove state file: {}", e);
-                eprintln!(
-                    "  {} Failed to clear state file: {}",
-                    "⚠".bright_yellow(),
-                    e
-                );
-            }
-        }
-    }
-
-    println!(
-        "{} {}",
-        "✓".bright_green(),
-        "Reset complete - ready for new connection attempt"
-            .bright_green()
-            .bold()
-    );
 
     Ok(())
 }
