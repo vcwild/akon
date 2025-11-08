@@ -108,7 +108,7 @@ mod reconnection_policy_tests {
         assert_eq!(policy.backoff_multiplier, 2); // default
         assert_eq!(policy.max_interval_secs, 60); // default
         assert_eq!(policy.consecutive_failures_threshold, 3); // default
-        assert_eq!(policy.health_check_interval_secs, 60); // default
+        assert_eq!(policy.health_check_interval_secs, 10); // default (changed from 60 to 10)
         assert_eq!(
             policy.health_check_endpoint,
             "https://vpn.example.com/health"

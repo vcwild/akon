@@ -37,6 +37,7 @@ pub struct ReconnectionPolicy {
     pub health_check_interval_secs: u64,
 
     /// Health check endpoint URL (HTTP/HTTPS)
+    #[serde(default = "default_health_check_endpoint")]
     pub health_check_endpoint: String,
 }
 
@@ -56,7 +57,10 @@ fn default_consecutive_failures() -> u32 {
     3
 }
 fn default_health_check_interval() -> u64 {
-    60
+    10
+}
+fn default_health_check_endpoint() -> String {
+    "https://google.com/".to_string()
 }
 
 impl ReconnectionPolicy {
@@ -530,8 +534,6 @@ impl ReconnectionManager {
 
                 // Handle periodic health checks
                 _ = health_check_timer.tick(), if health_checker.is_some() => {
-                    tracing::info!("Health check timer fired, performing check");
-                    // Only perform health checks when we have a checker
                     if let Some(ref checker) = health_checker {
                         self.handle_health_check(checker).await;
                     }
