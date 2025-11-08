@@ -18,7 +18,9 @@ use tracing::{debug, error, info, warn};
 
 /// State file for tracking VPN connection
 fn state_file_path() -> PathBuf {
-    PathBuf::from("/tmp/akon_vpn_state.json")
+    std::env::var("AKON_STATE_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp/akon_vpn_state.json"))
 }
 
 /// Handle cleanup_orphaned_processes result with user feedback
@@ -1102,7 +1104,7 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
             );
         }
 
-        return Ok(());
+        std::process::exit(1);
     }
 
     // Verify process is still running (Step 2 from vpn-status-command.md)

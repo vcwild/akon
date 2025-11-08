@@ -9,7 +9,6 @@ pub mod state;
 
 // Network interruption detection and automatic reconnection
 pub mod health_check;
-pub mod network_monitor;
 pub mod process;
 pub mod reconnection;
 

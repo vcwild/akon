@@ -13,7 +13,6 @@ use tokio::process::{Child, ChildStdin, Command};
 use tokio::sync::{mpsc, Mutex};
 
 /// CLI-based OpenConnect connection manager
-#[allow(dead_code)]
 pub struct CliConnector {
     /// Current connection state
     state: Arc<Mutex<ConnectionState>>,
@@ -196,57 +195,6 @@ impl CliConnector {
             tracing::debug!("Password sent to OpenConnect, stdin kept alive");
         }
         Ok(())
-    }
-
-    /// Monitor stdout for connection events
-    ///
-    /// Runs in background task, parsing output and sending events
-    #[allow(dead_code)]
-    async fn monitor_stdout(
-        parser: Arc<OutputParser>,
-        stdout: tokio::process::ChildStdout,
-        event_sender: mpsc::UnboundedSender<ConnectionEvent>,
-    ) {
-        let reader = BufReader::new(stdout);
-        let mut lines = reader.lines();
-
-        while let Ok(Some(line)) = lines.next_line().await {
-            tracing::debug!("OpenConnect stdout: {}", line);
-            let event = parser.parse_line(&line);
-
-            if event_sender.send(event.clone()).is_err() {
-                tracing::warn!("Failed to send event, receiver dropped");
-                break;
-            }
-
-            // Stop monitoring if we hit certain terminal events
-            if matches!(event, ConnectionEvent::Error { .. }) {
-                break;
-            }
-        }
-    }
-
-    /// Monitor stderr for errors
-    ///
-    /// Runs in background task, parsing error output
-    #[allow(dead_code)]
-    async fn monitor_stderr(
-        parser: Arc<OutputParser>,
-        stderr: tokio::process::ChildStderr,
-        event_sender: mpsc::UnboundedSender<ConnectionEvent>,
-    ) {
-        let reader = BufReader::new(stderr);
-        let mut lines = reader.lines();
-
-        while let Ok(Some(line)) = lines.next_line().await {
-            tracing::debug!("OpenConnect stderr: {}", line);
-            let event = parser.parse_error(&line);
-
-            if event_sender.send(event).is_err() {
-                tracing::warn!("Failed to send error event, receiver dropped");
-                break;
-            }
-        }
     }
 
     /// Connect to VPN
