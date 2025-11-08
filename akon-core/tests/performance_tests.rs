@@ -205,8 +205,11 @@ fn test_health_check_single_execution_time() {
     println!("Health checker creation time: {:?}", duration);
 
     // Creation should be nearly instantaneous
-    assert!(duration < Duration::from_millis(100),
-        "Health checker creation took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_millis(100),
+        "Health checker creation took too long: {:?}",
+        duration
+    );
 }
 
 // Unit test: Backoff calculation performance (can run without VPN)
@@ -240,8 +243,11 @@ fn test_backoff_calculation_performance() {
     println!("Average per calculation: {:?}", duration / 1000);
 
     // Should be extremely fast (microseconds)
-    assert!(duration < Duration::from_millis(10),
-        "Backoff calculation too slow: {:?}", duration);
+    assert!(
+        duration < Duration::from_millis(10),
+        "Backoff calculation too slow: {:?}",
+        duration
+    );
 }
 
 // Unit test: Config parsing performance (can run without VPN)
@@ -269,19 +275,22 @@ health_check_endpoint = "https://www.google.com"
 "#;
 
     let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
-    temp_file.write_all(config_toml.as_bytes()).expect("Failed to write config");
+    temp_file
+        .write_all(config_toml.as_bytes())
+        .expect("Failed to write config");
 
     // Measure time to load and parse config
-    let (result, duration) = measure_execution_time(|| {
-        TomlConfig::from_file(temp_file.path())
-    });
+    let (result, duration) = measure_execution_time(|| TomlConfig::from_file(temp_file.path()));
 
     println!("Config loading time: {:?}", duration);
 
     // Should be very fast
     assert!(result.is_ok(), "Failed to load config");
-    assert!(duration < Duration::from_millis(10),
-        "Config loading too slow: {:?}", duration);
+    assert!(
+        duration < Duration::from_millis(10),
+        "Config loading too slow: {:?}",
+        duration
+    );
 }
 
 /// Integration test documentation for live performance testing

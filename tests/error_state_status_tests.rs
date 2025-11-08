@@ -21,12 +21,15 @@ fn cleanup_state_file(name: &str) {
 #[ignore] // Requires serial execution
 fn test_status_command_suggests_reset_on_error_state() {
     // Create Error state file
-    create_state_file("akon_vpn_state_error", r#"{
+    create_state_file(
+        "akon_vpn_state_error",
+        r#"{
   "state": "Error",
   "error": "Max reconnection attempts (5) exceeded",
   "max_attempts": 5,
   "updated_at": "2025-11-05T12:00:00Z"
-}"#);
+}"#,
+    );
 
     // Run status command
     let output = Command::new("cargo")
@@ -40,7 +43,11 @@ fn test_status_command_suggests_reset_on_error_state() {
     let combined = format!("{}{}", stdout, stderr);
 
     // Verify exit code is 3 (error state)
-    assert_eq!(output.status.code(), Some(3), "Expected exit code 3 for Error state");
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "Expected exit code 3 for Error state"
+    );
 
     // Verify Error state is detected
     assert!(
@@ -85,13 +92,16 @@ fn test_status_command_suggests_reset_on_error_state() {
 #[ignore] // Requires release binary and serial execution
 fn test_status_command_shows_reconnecting_state() {
     // Create Reconnecting state file
-    create_state_file("akon_vpn_state_reconnect", r#"{
+    create_state_file(
+        "akon_vpn_state_reconnect",
+        r#"{
   "state": "Reconnecting",
   "attempt": 2,
   "next_retry_at": 1730815200,
   "max_attempts": 5,
   "updated_at": "2025-11-05T12:00:00Z"
-}"#);
+}"#,
+    );
 
     // Run status command
     let output = Command::new("cargo")
@@ -105,7 +115,11 @@ fn test_status_command_shows_reconnecting_state() {
     let combined = format!("{}{}", stdout, stderr);
 
     // Verify exit code is 1 (reconnecting is considered disconnected)
-    assert_eq!(output.status.code(), Some(1), "Expected exit code 1 for reconnecting state");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "Expected exit code 1 for reconnecting state"
+    );
 
     // Verify Reconnecting state is shown
     assert!(
@@ -142,7 +156,11 @@ fn test_status_command_shows_disconnected_when_no_state_file() {
     let combined = format!("{}{}", stdout, stderr);
 
     // Verify exit code is 1 (not connected)
-    assert_eq!(output.status.code(), Some(1), "Expected exit code 1 for not connected");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "Expected exit code 1 for not connected"
+    );
 
     // Verify disconnected message
     assert!(
@@ -157,12 +175,15 @@ fn test_status_command_shows_disconnected_when_no_state_file() {
 #[ignore] // Requires release binary and serial execution
 fn test_error_state_shows_attempt_count() {
     // Create Error state file with attempt information
-    create_state_file("akon_vpn_state_attempt", r#"{
+    create_state_file(
+        "akon_vpn_state_attempt",
+        r#"{
   "state": "Error",
   "error": "Max reconnection attempts (3) exceeded",
   "max_attempts": 3,
   "updated_at": "2025-11-05T12:00:00Z"
-}"#);
+}"#,
+    );
 
     // Run status command
     let output = Command::new("cargo")
