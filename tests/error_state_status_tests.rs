@@ -33,7 +33,7 @@ fn test_status_command_suggests_reset_on_error_state() {
 
     // Run status command
     let output = Command::new("cargo")
-        .args(&["run", "--", "vpn", "status"])
+        .args(["run", "--", "vpn", "status"])
         .env("AKON_STATE_FILE", "/tmp/akon_vpn_state_error.json")
         .output()
         .expect("Failed to execute command");
@@ -105,7 +105,7 @@ fn test_status_command_shows_reconnecting_state() {
 
     // Run status command
     let output = Command::new("cargo")
-        .args(&["run", "--", "vpn", "status"])
+        .args(["run", "--", "vpn", "status"])
         .env("AKON_STATE_FILE", "/tmp/akon_vpn_state_reconnect.json")
         .output()
         .expect("Failed to execute command");
@@ -146,7 +146,7 @@ fn test_status_command_shows_disconnected_when_no_state_file() {
 
     // Run status command
     let output = Command::new("cargo")
-        .args(&["run", "--", "vpn", "status"])
+        .args(["run", "--", "vpn", "status"])
         .env("AKON_STATE_FILE", "/tmp/akon_vpn_state_disconnect.json")
         .output()
         .expect("Failed to execute command");
@@ -187,7 +187,7 @@ fn test_error_state_shows_attempt_count() {
 
     // Run status command
     let output = Command::new("cargo")
-        .args(&["run", "--", "vpn", "status"])
+        .args(["run", "--", "vpn", "status"])
         .env("AKON_STATE_FILE", "/tmp/akon_vpn_state_attempt.json")
         .output()
         .expect("Failed to execute command");

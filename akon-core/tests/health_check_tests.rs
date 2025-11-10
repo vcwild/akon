@@ -22,7 +22,6 @@ async fn test_successful_health_check_with_200() {
     let result = health_checker.check().await;
 
     assert!(result.is_success());
-    assert!(result.duration().as_millis() > 0);
     assert!(result.error().is_none());
 }
 

@@ -142,9 +142,10 @@ impl VpnPassword {
 /// Connection state for VPN operations
 ///
 /// Tracks the current state of the VPN connection with associated metadata.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConnectionState {
     /// Not connected to VPN
+    #[default]
     Disconnected,
     /// Attempting to establish connection
     Connecting,
@@ -160,12 +161,6 @@ pub enum ConnectionState {
         /// Error message
         message: String,
     },
-}
-
-impl Default for ConnectionState {
-    fn default() -> Self {
-        Self::Disconnected
-    }
 }
 
 /// Keyring entry metadata

@@ -62,6 +62,7 @@ libc = "0.2"
 [dev-dependencies]
 cargo-tarpaulin = "0.27"
 tempfile = "3.0"
+lazy_static = "1.5"
 
 # Profile optimizations for faster builds and better caching
 [profile.dev]

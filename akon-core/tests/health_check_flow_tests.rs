@@ -1,8 +1,6 @@
 //! Integration tests for health check flow with full reconnection lifecycle
 
-use akon_core::vpn::connection_event::ConnectionState;
 use akon_core::vpn::reconnection::{ReconnectionManager, ReconnectionPolicy};
-use std::time::Duration;
 use wiremock::{
     matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
@@ -33,7 +31,7 @@ async fn test_health_check_triggers_reconnection_flow() {
 
     // When: VPN connection established with health checking enabled
     let manager = ReconnectionManager::new(policy);
-    let state_rx = manager.state_receiver();
+    let _state_rx = manager.state_receiver();
 
     // Simulate Connected state
     // manager.set_state(ConnectionState::Connected { ... });
@@ -91,7 +89,7 @@ async fn test_consecutive_failure_tracking() {
     };
 
     let manager = ReconnectionManager::new(policy);
-    let state_rx = manager.state_receiver();
+    let _state_rx = manager.state_receiver();
 
     // When: Health checks run (fail, fail, success, fail, fail)
     // ... run manager event loop ...
@@ -124,7 +122,7 @@ async fn test_reconnection_after_threshold() {
     };
 
     let manager = ReconnectionManager::new(policy);
-    let state_rx = manager.state_receiver();
+    let _state_rx = manager.state_receiver();
 
     // When: Health checks fail twice
     // ... run event loop ...
@@ -151,7 +149,7 @@ async fn test_health_check_only_runs_when_connected() {
         health_check_endpoint: format!("{}/health", mock_server.uri()),
     };
 
-    let manager = ReconnectionManager::new(policy);
+    let _manager = ReconnectionManager::new(policy);
 
     // Simulate Disconnected state
     // manager.set_state(ConnectionState::Disconnected);

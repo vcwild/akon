@@ -213,7 +213,7 @@ fn test_known_otp_values() {
 
     for (timestamp, expected_otp) in test_vectors {
         let result = totp::generate_otp(&otp_secret, Some(timestamp))
-            .expect(&format!("Should generate OTP for timestamp {}", timestamp));
+            .unwrap_or_else(|_| panic!("Should generate OTP for timestamp {}", timestamp));
 
         assert_eq!(
             result.expose(),

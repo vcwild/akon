@@ -9,7 +9,7 @@ pub mod toml_config;
 /// VPN protocol type
 ///
 /// Supported VPN protocols for OpenConnect
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VpnProtocol {
     /// Cisco AnyConnect SSL VPN
@@ -21,17 +21,12 @@ pub enum VpnProtocol {
     /// Pulse Connect Secure
     Pulse,
     /// F5 Big-IP SSL VPN (default)
+    #[default]
     F5,
     /// Fortinet FortiGate SSL VPN
     Fortinet,
     /// Array Networks SSL VPN
     Array,
-}
-
-impl Default for VpnProtocol {
-    fn default() -> Self {
-        Self::F5
-    }
 }
 
 impl VpnProtocol {

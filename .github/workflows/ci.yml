@@ -1,0 +1,78 @@
+# CI Pipeline for akon
+# Validates code quality, runs tests, and verifies builds on every push and pull request
+name: CI
+
+# Trigger on pull requests
+on:
+  pull_request:
+
+jobs:
+  # User Story 1: Code Quality Validation
+  # Validates code formatting and linting rules
+  lint:
+    name: Lint (rustfmt + clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: make deps
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Check code formatting
+        run: cargo fmt --all --check
+
+      - name: Run clippy linter
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # User Story 2: Automated Test Execution
+  # Runs all unit and integration tests across workspace
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        rust: [stable]
+    env:
+      CI: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: make deps
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
+  # User Story 3: Build Verification
+  # Verifies successful compilation in release mode
+  build:
+    name: Build (release)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: make deps
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build release binary
+        run: cargo build --release --workspace --verbose

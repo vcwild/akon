@@ -274,7 +274,6 @@ fn calculate_backoff(policy: &ReconnectionPolicy, attempt: u32) -> Duration {
 #[tokio::test]
 #[ignore] // Requires full ReconnectionManager::handle_health_check() implementation
 async fn test_health_check_failure_triggers_reconnection() {
-    use akon_core::vpn::connection_event::ConnectionState;
     use akon_core::vpn::reconnection::ReconnectionManager;
 
     // Given: Policy with consecutive_failures_threshold = 3
@@ -289,7 +288,7 @@ async fn test_health_check_failure_triggers_reconnection() {
     };
 
     let manager = ReconnectionManager::new(policy);
-    let state_rx = manager.state_receiver();
+    let _state_rx = manager.state_receiver();
 
     // When: Health check fails 3 consecutive times
     // (Will be implemented via manager.handle_health_check())
@@ -317,7 +316,7 @@ async fn test_consecutive_failures_threshold() {
         health_check_endpoint: "https://vpn.example.com/health".to_string(),
     };
 
-    let manager = ReconnectionManager::new(policy);
+    let _manager = ReconnectionManager::new(policy);
 
     // When: Health check fails twice
     // manager.handle_health_check(false).await;
@@ -330,7 +329,6 @@ async fn test_consecutive_failures_threshold() {
 #[tokio::test]
 #[ignore] // Requires full ReconnectionManager::handle_health_check() implementation
 async fn test_single_failure_does_not_trigger_reconnection() {
-    use akon_core::vpn::connection_event::ConnectionState;
     use akon_core::vpn::reconnection::ReconnectionManager;
 
     // Given: Policy with consecutive_failures_threshold = 3
@@ -345,7 +343,7 @@ async fn test_single_failure_does_not_trigger_reconnection() {
     };
 
     let manager = ReconnectionManager::new(policy);
-    let state_rx = manager.state_receiver();
+    let _state_rx = manager.state_receiver();
 
     // Given: Initial state is Connected
     // (Will be set by manager initialization)
@@ -360,7 +358,6 @@ async fn test_single_failure_does_not_trigger_reconnection() {
 #[tokio::test]
 #[ignore] // Requires full ReconnectionManager::handle_health_check() implementation
 async fn test_health_check_success_resets_failure_counter() {
-    use akon_core::vpn::connection_event::ConnectionState;
     use akon_core::vpn::reconnection::ReconnectionManager;
 
     // Given: Policy with consecutive_failures_threshold = 3
@@ -375,7 +372,7 @@ async fn test_health_check_success_resets_failure_counter() {
     };
 
     let manager = ReconnectionManager::new(policy);
-    let state_rx = manager.state_receiver();
+    let _state_rx = manager.state_receiver();
 
     // When: 2 failures, then success, then 2 more failures
     // manager.handle_health_check(false).await;  // failure 1
