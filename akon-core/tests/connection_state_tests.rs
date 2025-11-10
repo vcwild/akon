@@ -106,7 +106,7 @@ fn test_reconnecting_to_error_on_max_attempts() {
 #[test]
 fn test_reconnecting_state_attempt_increments() {
     // Given: A sequence of reconnecting states with incrementing attempts
-    let states = vec![
+    let states = [
         ConnectionState::Reconnecting {
             attempt: 1,
             next_retry_at: Some(1699104000),

@@ -280,8 +280,8 @@ fn test_config_roundtrip_preserves_all_values() {
     assert_eq!(loaded.vpn_config.server, "vpn.test.com");
     assert_eq!(loaded.vpn_config.username, "testuser123");
     assert_eq!(loaded.vpn_config.timeout, Some(45));
-    assert_eq!(loaded.vpn_config.no_dtls, true);
-    assert_eq!(loaded.vpn_config.lazy_mode, true);
+    assert!(loaded.vpn_config.no_dtls);
+    assert!(loaded.vpn_config.lazy_mode);
 
     // Verify reconnection policy roundtrip
     let policy = loaded

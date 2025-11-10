@@ -32,9 +32,9 @@ Each story can be implemented, tested, and merged independently.
 
 **Purpose**: Create workflow file structure and basic configuration
 
-- [ ] T001 Create `.github/workflows/` directory in repository root
-- [ ] T002 Create `.github/workflows/ci.yml` file with basic workflow skeleton (name, triggers)
-- [ ] T003 Configure workflow triggers for push and pull_request events on all branches
+- [X] T001 Create `.github/workflows/` directory in repository root
+- [X] T002 Create `.github/workflows/ci.yml` file with basic workflow skeleton (name, triggers)
+- [X] T003 Configure workflow triggers for push and pull_request events on all branches
 
 **Expected Output**:
 - Directory: `.github/workflows/`
@@ -48,9 +48,9 @@ Each story can be implemented, tested, and merged independently.
 
 **⚠️ CRITICAL**: These steps are reused across all jobs - must be defined before implementing user stories
 
-- [ ] T004 [P] Define checkout step using `actions/checkout@v4` (reusable in all jobs)
-- [ ] T005 [P] Define Rust toolchain setup step using `actions-rust-lang/setup-rust-toolchain@v1` with stable channel (reusable in all jobs)
-- [ ] T006 [P] Define system dependencies installation step for Ubuntu (apt-get install libopenconnect-dev libdbus-1-dev pkg-config)
+- [X] T004 [P] Define checkout step using `actions/checkout@v4` (reusable in all jobs)
+- [X] T005 [P] Define Rust toolchain setup step using `actions-rust-lang/setup-rust-toolchain@v1` with stable channel (reusable in all jobs)
+- [X] T006 [P] Define system dependencies installation step for Ubuntu (apt-get install libopenconnect-dev libdbus-1-dev pkg-config)
 
 **Checkpoint**: Foundation steps defined - user story jobs can now reference these patterns
 
@@ -69,11 +69,11 @@ Each story can be implemented, tested, and merged independently.
 
 ### Implementation for User Story 1
 
-- [ ] T007 [US1] Define `lint` job in `.github/workflows/ci.yml` with `runs-on: ubuntu-latest`
-- [ ] T008 [US1] Add checkout step to lint job using `actions/checkout@v4`
-- [ ] T009 [US1] Add Rust toolchain setup to lint job using `actions-rust-lang/setup-rust-toolchain@v1` with components `rustfmt, clippy`
-- [ ] T010 [US1] Add formatting check step running `cargo fmt --all --check` in lint job
-- [ ] T011 [US1] Add clippy check step running `cargo clippy --workspace --all-targets -- -D warnings` in lint job
+- [X] T007 [US1] Define `lint` job in `.github/workflows/ci.yml` with `runs-on: ubuntu-latest`
+- [X] T008 [US1] Add checkout step to lint job using `actions/checkout@v4`
+- [X] T009 [US1] Add Rust toolchain setup to lint job using `actions-rust-lang/setup-rust-toolchain@v1` with components `rustfmt, clippy`
+- [X] T010 [US1] Add formatting check step running `cargo fmt --all --check` in lint job
+- [X] T011 [US1] Add clippy check step running `cargo clippy --workspace --all-targets -- -D warnings` in lint job
 - [ ] T012 [US1] Test lint job by pushing formatted code (should pass)
 - [ ] T013 [US1] Test lint job by pushing unformatted code (should fail with clear message)
 - [ ] T014 [US1] Test lint job by pushing code with clippy warnings (should fail with clear warnings)
@@ -95,11 +95,11 @@ Each story can be implemented, tested, and merged independently.
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Define `test` job in `.github/workflows/ci.yml` with `runs-on: ubuntu-latest` (parallel to lint job)
-- [ ] T016 [US2] Add checkout step to test job using `actions/checkout@v4`
-- [ ] T017 [US2] Add system dependencies installation step to test job (apt-get install libopenconnect-dev libdbus-1-dev pkg-config)
-- [ ] T018 [US2] Add Rust toolchain setup to test job using `actions-rust-lang/setup-rust-toolchain@v1`
-- [ ] T019 [US2] Add test execution step running `cargo test --workspace --verbose` in test job
+- [X] T015 [US2] Define `test` job in `.github/workflows/ci.yml` with `runs-on: ubuntu-latest` (parallel to lint job)
+- [X] T016 [US2] Add checkout step to test job using `actions/checkout@v4`
+- [X] T017 [US2] Add system dependencies installation step to test job (apt-get install libopenconnect-dev libdbus-1-dev pkg-config)
+- [X] T018 [US2] Add Rust toolchain setup to test job using `actions-rust-lang/setup-rust-toolchain@v1`
+- [X] T019 [US2] Add test execution step running `cargo test --workspace --verbose` in test job
 - [ ] T020 [US2] Test test job by pushing code with all tests passing (should pass)
 - [ ] T021 [US2] Test test job by introducing a failing test (should fail with test name and reason)
 - [ ] T022 [US2] Verify tests run for both akon and akon-core workspace members
@@ -121,11 +121,11 @@ Each story can be implemented, tested, and merged independently.
 
 ### Implementation for User Story 3
 
-- [ ] T023 [US3] Define `build` job in `.github/workflows/ci.yml` with `runs-on: ubuntu-latest` (parallel to lint and test jobs)
-- [ ] T024 [US3] Add checkout step to build job using `actions/checkout@v4`
-- [ ] T025 [US3] Add system dependencies installation step to build job (apt-get install libopenconnect-dev libdbus-1-dev pkg-config)
-- [ ] T026 [US3] Add Rust toolchain setup to build job using `actions-rust-lang/setup-rust-toolchain@v1`
-- [ ] T027 [US3] Add release build step running `cargo build --release --workspace --verbose` in build job
+- [X] T023 [US3] Define `build` job in `.github/workflows/ci.yml` with `runs-on: ubuntu-latest` (parallel to lint and test jobs)
+- [X] T024 [US3] Add checkout step to build job using `actions/checkout@v4`
+- [X] T025 [US3] Add system dependencies installation step to build job (apt-get install libopenconnect-dev libdbus-1-dev pkg-config)
+- [X] T026 [US3] Add Rust toolchain setup to build job using `actions-rust-lang/setup-rust-toolchain@v1`
+- [X] T027 [US3] Add release build step running `cargo build --release --workspace --verbose` in build job
 - [ ] T028 [US3] Test build job by pushing valid code (should compile successfully)
 - [ ] T029 [US3] Test build job by introducing compilation error (should fail with clear compiler error)
 - [ ] T030 [US3] Verify build artifacts are produced at `target/release/akon`
@@ -146,8 +146,8 @@ Each story can be implemented, tested, and merged independently.
 
 ### Implementation for User Story 4
 
-- [ ] T031 [US4] Add strategy matrix to test job in `.github/workflows/ci.yml` with rust versions: `[stable, "1.70"]`
-- [ ] T032 [US4] Update Rust toolchain setup in test job to use `${{ matrix.rust }}` toolchain
+- [X] T031 [US4] Add strategy matrix to test job in `.github/workflows/ci.yml` with rust versions: `[stable, "1.70"]`
+- [X] T032 [US4] Update Rust toolchain setup in test job to use `${{ matrix.rust }}` toolchain
 - [ ] T033 [US4] Test matrix builds by pushing code compatible with Rust 1.70 (both should pass)
 - [ ] T034 [US4] Test MSRV enforcement by using a newer Rust feature (MSRV build should fail with clear error)
 - [ ] T035 [US4] Optionally add strategy matrix to build job for comprehensive MSRV verification

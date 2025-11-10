@@ -6,7 +6,7 @@ use std::thread;
 use std::time::Duration;
 
 #[cfg(unix)]
-use nix::sys::signal::{kill, Signal};
+use nix::sys::signal::kill;
 #[cfg(unix)]
 use nix::unistd::Pid;
 
@@ -20,7 +20,12 @@ fn spawn_mock_openconnect() -> u32 {
         .spawn()
         .expect("Failed to spawn mock process");
 
-    child.id()
+    let pid = child.id();
+
+    // Detach the child process - we'll clean it up manually in tests
+    std::mem::forget(child);
+
+    pid
 }
 
 /// Test helper to check if a process is still running
