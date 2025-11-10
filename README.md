@@ -52,6 +52,39 @@ This design eliminates FFI complexity while maintaining full OpenConnect functio
 
 ## Installation
 
+### Binary Packages (Recommended)
+
+Download pre-built packages for your distribution from the [GitHub Releases](https://github.com/vcwild/akon/releases) page.
+
+#### Ubuntu/Debian
+
+```bash
+# Download the latest .deb package
+wget https://github.com/vcwild/akon/releases/download/v1.1.1/akon_1.1.1_amd64.deb
+
+# Install the package
+sudo dpkg -i akon_1.1.1_amd64.deb
+
+# If there are dependency issues, run:
+sudo apt-get install -f
+```
+
+#### Fedora/RHEL
+
+```bash
+# Download the latest .rpm package
+wget https://github.com/vcwild/akon/releases/download/v1.1.1/akon-1.1.1-1.x86_64.rpm
+
+# Install the package
+sudo dnf install ./akon-1.1.1-1.x86_64.rpm
+```
+
+**What the packages do:**
+- Install binary to `/usr/bin/akon`
+- Configure passwordless sudo for openconnect, pkill, and kill
+- Install documentation to `/usr/share/doc/akon/`
+- Set up all dependencies automatically
+
 ### From Source
 
 ```bash

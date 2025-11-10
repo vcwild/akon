@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+# Pre-removal script for akon
+# Cleans up sudoers configuration
+
+# Stop any running akon daemon
+if command -v akon >/dev/null 2>&1; then
+    akon off 2>/dev/null || true
+fi
+
+#DEBHELPER#
+
+exit 0

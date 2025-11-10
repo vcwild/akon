@@ -1,6 +1,4 @@
-.github
-!.github/workflows/
-!.github/workflows/*.yml
+.github/prompts
 debug/
 traces/
 # Added by cargo
@@ -32,6 +30,13 @@ build.rs
 *.so
 *.dylib
 *.dll
+
+# Binary packages
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+SHA256SUMS.txt
 
 # Configuration files that may contain secrets (never commit)
 config.toml

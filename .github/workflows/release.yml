@@ -1,0 +1,281 @@
+# Release Pipeline for akon
+# Builds and publishes binary packages for Ubuntu and Fedora
+---
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    paths:
+      - '.github/workflows/release.yml'
+      - 'Cargo.toml'
+      - 'debian/**'
+      - 'rpm/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.1.1)'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Test package building on PRs (no release)
+  test-packages:
+    name: Test Package Building
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            package: deb
+          - os: ubuntu-latest
+            package: rpm
+            container: fedora:latest
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.package == 'deb'
+        run: make deps
+
+      - name: Install system dependencies (Fedora)
+        if: matrix.package == 'rpm'
+        run: |
+          # Install base build tools and package building tools
+          dnf install -y \
+            gcc \
+            gcc-c++ \
+            make \
+            openssl-devel \
+            git \
+            curl \
+            rpm-build \
+            rpmdevtools
+          # Install runtime dependencies (openconnect + dbus)
+          dnf install -y \
+            openconnect \
+            dbus-devel \
+            pkgconf-pkg-config
+
+      - name: Setup Rust toolchain (Ubuntu)
+        if: matrix.package == 'deb'
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Setup Rust toolchain (Fedora)
+        if: matrix.package == 'rpm'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y
+          source $HOME/.cargo/env
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install packaging tools
+        run: |
+          if [ "${{ matrix.package }}" = "deb" ]; then
+            cargo install cargo-deb
+          else
+            source $HOME/.cargo/env
+            cargo install cargo-generate-rpm
+          fi
+
+      - name: Build release binary
+        run: |
+          if [ "${{ matrix.package }}" = "rpm" ]; then
+            source $HOME/.cargo/env
+          fi
+          cargo build --release --verbose
+
+      - name: Build package
+        run: |
+          if [ "${{ matrix.package }}" = "deb" ]; then
+            cargo deb --no-build
+            echo "Package built: $(ls -1 target/debian/*.deb)"
+          else
+            source $HOME/.cargo/env
+            cargo generate-rpm
+            echo "Package built: $(ls -1 target/generate-rpm/*.rpm)"
+          fi
+
+      - name: Upload test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-${{ matrix.package }}-package
+          path: |
+            target/debian/*.deb
+            target/generate-rpm/*.rpm
+          retention-days: 7
+
+  # Build Ubuntu .deb package for release
+  build-deb:
+    if: >-
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    name: Build Ubuntu .deb Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: make deps
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install cargo-deb
+        run: cargo install cargo-deb
+
+      - name: Build release binary
+        run: cargo build --release --verbose
+
+      - name: Build .deb package
+        run: cargo deb --no-build
+
+      - name: Get package version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            # For PRs and branches, use short SHA
+            echo "version=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: akon-${{ steps.version.outputs.version }}-amd64.deb
+          path: target/debian/*.deb
+          retention-days: 120
+
+  # Build Fedora .rpm package
+  build-rpm:
+    if: >-
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
+    name: Build Fedora .rpm Package
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          # Install base build tools and package building tools
+          dnf install -y \
+            gcc \
+            gcc-c++ \
+            make \
+            openssl-devel \
+            git \
+            curl \
+            rpm-build \
+            rpmdevtools
+          # Install runtime dependencies (openconnect + dbus)
+          dnf install -y \
+            openconnect \
+            dbus-devel \
+            pkgconf-pkg-config
+
+      - name: Setup Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y
+          source $HOME/.cargo/env
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install cargo-generate-rpm
+        run: |
+          source $HOME/.cargo/env
+          cargo install cargo-generate-rpm
+
+      - name: Build release binary
+        run: |
+          source $HOME/.cargo/env
+          cargo build --release --verbose
+
+      - name: Generate .rpm package
+        run: |
+          source $HOME/.cargo/env
+          cargo generate-rpm
+
+      - name: Get package version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            # For PRs and branches, use short SHA
+            echo "version=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload .rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: akon-${{ steps.version.outputs.version }}-1.x86_64.rpm
+          path: target/generate-rpm/*.rpm
+          retention-days: 120
+
+  # Create GitHub Release with packages
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-deb, build-rpm]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download .deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: akon-${{ steps.version.outputs.version }}-amd64.deb
+          path: ./packages
+
+      - name: Download .rpm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: akon-${{ steps.version.outputs.version }}-1.x86_64.rpm
+          path: ./packages
+
+      - name: Generate checksums
+        run: |
+          cd packages
+          sha256sum *.deb *.rpm > SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            packages/*.deb
+            packages/*.rpm
+            packages/SHA256SUMS.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

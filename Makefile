@@ -1,4 +1,4 @@
-.PHONY: all install install-dev
+.PHONY: all install install-dev deps build-deb build-rpm package-all
 
 # Default target - build release binary
 all:
@@ -112,3 +112,36 @@ deps:
 			exit 0; \
 		;; \
 	esac'
+
+# Build .deb package for Ubuntu/Debian
+build-deb: all
+	@echo "Building .deb package..."
+	@if ! command -v cargo-deb &> /dev/null; then \
+		echo "Installing cargo-deb..."; \
+		cargo install cargo-deb; \
+	fi
+	cargo deb --no-build
+	@echo "✓ Package created: $$(ls -1 target/debian/*.deb | tail -1)"
+	@echo ""
+	@echo "Install with:"
+	@echo "  sudo dpkg -i $$(ls -1 target/debian/*.deb | tail -1)"
+
+# Build .rpm package for Fedora/RHEL
+build-rpm: all
+	@echo "Building .rpm package..."
+	@if ! command -v cargo-generate-rpm &> /dev/null; then \
+		echo "Installing cargo-generate-rpm..."; \
+		cargo install cargo-generate-rpm; \
+	fi
+	cargo generate-rpm
+	@echo "✓ Package created: $$(ls -1 target/generate-rpm/*.rpm | tail -1)"
+	@echo ""
+	@echo "Install with:"
+	@echo "  sudo rpm -i $$(ls -1 target/generate-rpm/*.rpm | tail -1)"
+
+# Build both packages
+package-all: build-deb build-rpm
+	@echo ""
+	@echo "All packages built successfully!"
+	@echo "DEB: $$(ls -1 target/debian/*.deb | tail -1)"
+	@echo "RPM: $$(ls -1 target/generate-rpm/*.rpm | tail -1)"

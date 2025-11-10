@@ -1,0 +1,20 @@
+#!/bin/sh
+set -e
+
+# Post-removal script for akon
+# Removes sudoers configuration file
+
+SUDOERS_FILE="/etc/sudoers.d/akon"
+
+# Remove sudoers file if package is being purged
+if [ "$1" = "purge" ]; then
+    rm -f "$SUDOERS_FILE"
+    echo "akon configuration has been removed."
+fi
+
+# Clean up any temporary state files
+rm -f /tmp/akon_vpn_state.json 2>/dev/null || true
+
+#DEBHELPER#
+
+exit 0
