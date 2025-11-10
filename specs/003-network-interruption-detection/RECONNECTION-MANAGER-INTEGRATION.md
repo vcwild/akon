@@ -46,7 +46,7 @@ Successfully integrated the ReconnectionManager into the `akon vpn on` command u
 ### Connection Test
 ```bash
 $ ./target/release/akon vpn on
-🔌 Connecting to VPN server: access.etraveligroup.com
+🔌 Connecting to VPN server: your-vpn-provider.com
 🔐 Authenticating with server...
 ✓ VPN connection established
 🔄 Reconnection manager started
@@ -69,7 +69,7 @@ $ ./target/release/akon vpn status
 ```bash
 $ journalctl --user -t akon --since "5 minutes ago" | tail -3
 Nov 05 00:21:02 dev-vicwil akon[1643918]: Starting reconnection manager with policy:
-    max_attempts=5, health_endpoint=https://git.etraveli.net/
+    max_attempts=5, health_endpoint=https://google.com/
 Nov 05 00:21:02 dev-vicwil akon[1643918]: Reconnection manager spawned in background
 Nov 05 00:21:02 dev-vicwil akon[1643918]: Initializing reconnection manager with health checks
 ```
@@ -213,14 +213,14 @@ Background:
 2. **Simulate health check failure**:
    ```bash
    # Block health endpoint
-   sudo iptables -A OUTPUT -d <git.etraveli.net-ip> -p tcp --dport 443 -j DROP
+   sudo iptables -A OUTPUT -d <google.com-ip> -p tcp --dport 443 -j DROP
 
    # Wait 3-4 minutes (3 consecutive failures × 60s)
    # Monitor reconnection attempts
    journalctl --user -t akon -f | grep -E "(Health|Reconnection|attempt)"
 
    # Restore connectivity
-   sudo iptables -D OUTPUT -d <git.etraveli.net-ip> -p tcp --dport 443 -j DROP
+   sudo iptables -D OUTPUT -d <google.com-ip> -p tcp --dport 443 -j DROP
    ```
 
 3. **Verify reconnection behavior**:

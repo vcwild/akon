@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
+<svg width="800px" height="800px" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<style>.cls-1{fill:#f19b5f;}.cls-2{fill:#ffce69;}.cls-3{fill:#6c6b75;}.cls-4{fill:#6c2e7c;}</style>
+</defs>
+<g id="Icons">
+<rect class="cls-1" height="14" rx="3" width="18" x="3" y="9"/>
+<rect class="cls-2" height="9" rx="3" width="18" x="3" y="9"/>
+<circle class="cls-3" cx="12" cy="15" r="2"/>
+</g>
+<g data-name="Layer 4" id="Layer_4">
+<path class="cls-4" d="M7,8H6a4,4,0,0,0-4,4v8a4,4,0,0,0,4,4H18a4,4,0,0,0,4-4V12a4,4,0,0,0-4-4V6A6,6,0,0,0,6.119,4.8a1,1,0,0,0,1.961.4A4,4,0,0,1,16,6V8Zm13,4v8a2,2,0,0,1-2,2H6a2,2,0,0,1-2-2V12a2,2,0,0,1,2-2H18A2,2,0,0,1,20,12Z"/>
+<path class="cls-4" d="M12,12a2.993,2.993,0,0,0-1,5.816V19a1,1,0,0,0,2,0V17.816A2.993,2.993,0,0,0,12,12Zm0,4a1,1,0,1,1,1-1A1,1,0,0,1,12,16Z"/>
+</g>
+</svg>
