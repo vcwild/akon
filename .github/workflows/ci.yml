@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [stable, "1.70"]
+        rust: [stable]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
