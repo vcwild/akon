@@ -6,9 +6,51 @@ resolver = "2"
 name = "akon"
 version = "1.1.1"
 edition = "2021"
+authors = ["vcwild"]
+description = "A CLI tool for managing VPN connections with OpenConnect"
+license = "MIT"
+repository = "https://github.com/vcwild/akon"
+homepage = "https://github.com/vcwild/akon"
+readme = "README.md"
+keywords = ["vpn", "openconnect", "cli", "networking"]
+categories = ["command-line-utilities", "network-programming"]
 
 [lints.rust]
 dead_code = "deny"
+
+# Debian package metadata for cargo-deb
+[package.metadata.deb]
+maintainer = "vcwild"
+copyright = "2025, vcwild"
+license-file = ["LICENSE", "4"]
+extended-description = """\
+akon is a command-line tool for managing VPN connections using OpenConnect.
+It provides an easy-to-use interface for connecting to VPN servers with support
+for automatic reconnection, health checks, and daemon mode operation."""
+depends = "openconnect, procps"
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/akon", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/akon/", "644"],
+    ["LICENSE", "usr/share/doc/akon/", "644"],
+]
+maintainer-scripts = "debian/"
+
+# RPM package metadata for cargo-generate-rpm
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/akon", dest = "/usr/bin/akon", mode = "755" },
+    { source = "README.md", dest = "/usr/share/doc/akon/README.md", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/doc/akon/LICENSE", mode = "644" },
+]
+post_install_script = "rpm/post-install.sh"
+pre_uninstall_script = "rpm/pre-uninstall.sh"
+post_uninstall_script = "rpm/post-uninstall.sh"
+
+[package.metadata.generate-rpm.requires]
+openconnect = "*"
+procps-ng = "*"
 
 [[bin]]
 name = "akon"
