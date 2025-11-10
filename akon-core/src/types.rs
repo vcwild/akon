@@ -163,7 +163,6 @@ pub enum ConnectionState {
     },
 }
 
-
 /// Keyring entry metadata
 ///
 /// Information about a credential stored in the GNOME Keyring.
