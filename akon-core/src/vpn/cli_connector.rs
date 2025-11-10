@@ -216,7 +216,7 @@ impl CliConnector {
         // Send password via stdin (do this immediately while sudo is running)
         self.send_password(&mut child, &password).await?;
 
-        // Take stdout for monitoring connection status
+        // Take stdout and stderr for monitoring connection status
         let stdout = child
             .stdout
             .take()
@@ -224,19 +224,39 @@ impl CliConnector {
                 reason: "Failed to capture stdout".to_string(),
             })?;
 
-        // Monitor stdout until we see connection success, then stop
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| VpnError::ProcessSpawnError {
+                reason: "Failed to capture stderr".to_string(),
+            })?;
+
+        // Monitor both stdout and stderr until we see connection success or error
         let parser = Arc::clone(&self.parser);
         let event_sender = self.event_sender.clone();
+        let parser_stderr = Arc::clone(&self.parser);
+        let event_sender_stderr = self.event_sender.clone();
 
-        let mut reader = BufReader::new(stdout).lines();
+        let mut stdout_reader = BufReader::new(stdout).lines();
+        let mut stderr_reader = BufReader::new(stderr).lines();
         let mut connected = false;
         let mut ip_address = None;
         let mut device = None;
-        let mut authenticating_sent = false; // Track if we've already sent authenticating event
+        let mut authenticating_sent = false;
+        let mut last_error: Option<String> = None;
 
-        // Read output until connection is established or error occurs
-        while let Ok(Some(line)) = reader.next_line().await {
-            tracing::debug!("OpenConnect: {}", line);
+        // Spawn a task to monitor stderr in parallel
+        let stderr_handle = tokio::spawn(async move {
+            while let Ok(Some(line)) = stderr_reader.next_line().await {
+                tracing::debug!("OpenConnect stderr: {}", line);
+                let event = parser_stderr.parse_error(&line);
+                let _ = event_sender_stderr.send(event);
+            }
+        });
+
+        // Read stdout until connection is established or error occurs
+        while let Ok(Some(line)) = stdout_reader.next_line().await {
+            tracing::debug!("OpenConnect stdout: {}", line);
 
             // Parse the line for connection events
             let event = parser.parse_line(&line);
@@ -250,8 +270,9 @@ impl CliConnector {
                 }
                 ConnectionEvent::Error { kind, raw_output } => {
                     let error_msg = format!("{:?}: {}", kind, raw_output);
+                    last_error = Some(error_msg.clone());
                     let _ = event_sender.send(event.clone());
-                    return Err(VpnError::ConnectionFailed { reason: error_msg });
+                    // Continue reading to see if there are more specific errors
                 }
                 ConnectionEvent::Authenticating { .. } => {
                     // Only send the first authenticating event to avoid duplicates
@@ -266,9 +287,20 @@ impl CliConnector {
             }
         }
 
+        // Cancel stderr monitoring
+        stderr_handle.abort();
+
         if !connected {
+            // Check if we captured any error messages
+            if let Some(error) = last_error {
+                return Err(VpnError::ConnectionFailed { reason: error });
+            }
+
             return Err(VpnError::ConnectionFailed {
-                reason: "Connection established message not received".to_string(),
+                reason: format!(
+                    "No response from server '{}'. Please verify the server address is correct.",
+                    self.config.server
+                ),
             });
         }
 

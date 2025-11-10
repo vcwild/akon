@@ -55,8 +55,10 @@ impl OutputParser {
                 .expect("Failed to compile cert_error pattern"),
             tun_error_pattern: Regex::new(r"(?i)failed to open tun|tun.*error|no tun device")
                 .expect("Failed to compile tun_error pattern"),
-            dns_error_pattern: Regex::new(r"(?i)cannot resolve|unknown host|name resolution")
-                .expect("Failed to compile dns_error pattern"),
+            dns_error_pattern: Regex::new(
+                r"(?i)cannot resolve|unknown host|name resolution|getaddrinfo failed|Name or service not known"
+            )
+            .expect("Failed to compile dns_error pattern"),
         }
     }
 
