@@ -148,8 +148,11 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            # For PRs and branches, use short SHA
+            echo "version=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload .deb artifact
@@ -214,8 +217,11 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-          else
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            # For PRs and branches, use short SHA
+            echo "version=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload .rpm artifact
