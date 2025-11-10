@@ -163,6 +163,9 @@ jobs:
     container:
       image: fedora:latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install build dependencies
         run: |
           # Install base build tools and package building tools
@@ -177,9 +180,6 @@ jobs:
             rpmdevtools
           # Install runtime deps via make deps
           make deps
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Setup Rust toolchain
         run: |
