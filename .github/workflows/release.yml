@@ -160,10 +160,13 @@ jobs:
         with:
           name: akon-${{ steps.version.outputs.version }}-amd64.deb
           path: target/debian/*.deb
-          retention-days: 90
+          retention-days: 120
 
   # Build Fedora .rpm package
   build-rpm:
+    if: >-
+      startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'workflow_dispatch'
     name: Build Fedora .rpm Package
     runs-on: ubuntu-latest
     container:
@@ -229,7 +232,7 @@ jobs:
         with:
           name: akon-${{ steps.version.outputs.version }}-1.x86_64.rpm
           path: target/generate-rpm/*.rpm
-          retention-days: 90
+          retention-days: 120
 
   # Create GitHub Release with packages
   create-release:
