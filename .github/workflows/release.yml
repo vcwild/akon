@@ -59,8 +59,11 @@ jobs:
             curl \
             rpm-build \
             rpmdevtools
-          # Install runtime deps via make deps
-          make deps
+          # Install runtime dependencies (openconnect + dbus)
+          dnf install -y \
+            openconnect \
+            dbus-devel \
+            pkgconf-pkg-config
 
       - name: Setup Rust toolchain (Ubuntu)
         if: matrix.package == 'deb'
@@ -178,8 +181,11 @@ jobs:
             curl \
             rpm-build \
             rpmdevtools
-          # Install runtime deps via make deps
-          make deps
+          # Install runtime dependencies (openconnect + dbus)
+          dnf install -y \
+            openconnect \
+            dbus-devel \
+            pkgconf-pkg-config
 
       - name: Setup Rust toolchain
         run: |
