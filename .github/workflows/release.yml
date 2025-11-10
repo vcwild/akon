@@ -46,19 +46,21 @@ jobs:
         if: matrix.package == 'deb'
         run: make deps
 
-      - name: Install build dependencies (Fedora)
+      - name: Install system dependencies (Fedora)
         if: matrix.package == 'rpm'
         run: |
+          # Install base build tools and package building tools
           dnf install -y \
             gcc \
             gcc-c++ \
             make \
             openssl-devel \
-            pkg-config \
-            rpm-build \
-            rpmdevtools \
             git \
-            curl
+            curl \
+            rpm-build \
+            rpmdevtools
+          # Install runtime deps via make deps
+          make deps
 
       - name: Setup Rust toolchain (Ubuntu)
         if: matrix.package == 'deb'
@@ -163,16 +165,18 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
+          # Install base build tools and package building tools
           dnf install -y \
             gcc \
             gcc-c++ \
             make \
             openssl-devel \
-            pkg-config \
-            rpm-build \
-            rpmdevtools \
             git \
-            curl
+            curl \
+            rpm-build \
+            rpmdevtools
+          # Install runtime deps via make deps
+          make deps
 
       - name: Checkout repository
         uses: actions/checkout@v4
