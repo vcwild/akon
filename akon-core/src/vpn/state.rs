@@ -53,9 +53,10 @@ impl ConnectionMetadata {
 }
 
 /// VPN connection states
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ConnectionState {
     /// Not connected
+    #[default]
     Disconnected,
 
     /// Attempting to establish connection
@@ -79,12 +80,6 @@ pub enum ConnectionState {
         /// Total maximum attempts allowed
         max_attempts: u32,
     },
-}
-
-impl Default for ConnectionState {
-    fn default() -> Self {
-        Self::Disconnected
-    }
 }
 
 impl std::fmt::Display for ConnectionState {
