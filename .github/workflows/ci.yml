@@ -39,6 +39,8 @@ jobs:
     strategy:
       matrix:
         rust: [stable]
+    env:
+      CI: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
