@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "akon"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 authors = ["vcwild"]
 description = "A CLI tool for managing VPN connections with OpenConnect"
