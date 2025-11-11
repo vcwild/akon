@@ -2,7 +2,7 @@
     <img src=".github/assets/badge.svg" width="200px" alt="akon badge" />
   </div>
   <div align="center">
-    <img src="https://img.shields.io/github/actions/workflow/status/vcwild/akon/ci.yml?branch=main&style=flat-square&color=%23FFCE69" alt="CI status" />
+    <img src="https://img.shields.io/github/actions/workflow/status/vcwild/akon/ci.yml?style=flat-square&color=%23FFCE69" alt="CI status" />
     <img src="https://img.shields.io/github/v/release/vcwild/akon?include_prereleases&color=%23FFCE69&style=flat-square" alt="release" />
     <img src="https://img.shields.io/github/license/vcwild/akon?color=%23FFCE69&style=flat-square" alt="license" />
     <img src="https://img.shields.io/github/repo-size/vcwild/akon?color=%23FFCE69&style=flat-square" alt="repo size" />
@@ -23,120 +23,14 @@ A CLI for managing VPN connections with automatic TOTP (Time-based One-Time Pass
 
 ## Table of Contents
 
-- [Why "akon"?](#why-akon)
-- [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
-- [Project Structure](#project-structure)
-- [Test Coverage](#test-coverage)
+- [Why "akon"?](#why-akon)
+- [Architecture](#architecture)
 - [Contributing](#contributing)
 - [License](#license)
-- [Support](#support)
-
-## Why "akon"?
-
-The name "akon" is a playful triple entendre:
-
-1. **Memorable Command**: A short, 4-letter command that's easy to type and remember
-2. **Project Evolution**: The successor to [auto-openconnect](https://github.com/vcwild/auto-openconnect)
-3. **Cultural Reference**: A nod to the famous singer Akon, because connecting to VPN should be as smooth as his music
-
-## Architecture
-
-akon uses a **CLI process delegation** architecture:
-
-- Spawns OpenConnect as a child process
-- Manages process lifecycle (spawn → monitor → terminate)
-- Parses output in real-time for connection events
-- Provides clean async API using Tokio
-
-This design eliminates FFI complexity while maintaining full OpenConnect functionality.
-
-### How It Works
-
-```mermaid
-flowchart TB
-    User([👤 User]) -->|$ akon vpn on| CLI[CLI Entry Point]
-
-    CLI --> Config[Load Config<br/>~/.config/akon/config.toml]
-    Config --> Keyring[🔐 Retrieve Credentials<br/>GNOME Keyring]
-
-    Keyring -->|PIN + TOTP Secret| TOTP[Generate TOTP Token<br/>Time-based OTP]
-    TOTP -->|PIN+OTP| Connector[CLI Connector<br/>Process Manager]
-
-    Connector -->|spawn sudo openconnect| OC[🌐 OpenConnect Process<br/>VPN Tunnel]
-
-    OC -->|stdout/stderr| Parser[Output Parser<br/>Regex Matching]
-    Parser -->|Connection Events| Monitor[Connection Monitor<br/>State Machine]
-
-    Monitor -->|Connected Event| State[Update State<br/>/tmp/akon_vpn_state.json]
-    State --> Success[✓ VPN Connected<br/>IP Assigned]
-
-    Success -.->|periodic checks| Health[🏥 Health Check<br/>HTTP Probe]
-    Health -->|HTTP GET| Endpoint[Internal Endpoint<br/>Connectivity Test]
-
-    Endpoint -->|Success| Continue[Continue Monitoring]
-    Endpoint -->|Failure| Threshold{Consecutive<br/>Failures ≥ threshold?}
-
-    Threshold -->|No| Continue
-    Threshold -->|Yes| Reconnect[🔄 Reconnection<br/>Exponential Backoff]
-
-    Monitor -.->|NetworkManager D-Bus| NM[📶 Network Events<br/>WiFi/Ethernet Changes]
-    NM -.->|suspend/resume<br/>WiFi change| Reconnect
-
-    Reconnect -->|backoff: 5s→10s→20s→40s→60s| Connector
-
-    style User fill:#34495e,stroke:#2c3e50,stroke-width:3px,color:#fff
-    style CLI fill:#3498db,stroke:#2980b9,stroke-width:3px,color:#fff
-    style Config fill:#95a5a6,stroke:#7f8c8d,stroke-width:2px,color:#fff
-    style Keyring fill:#f39c12,stroke:#e67e22,stroke-width:3px,color:#fff
-    style TOTP fill:#16a085,stroke:#138d75,stroke-width:2px,color:#fff
-    style Connector fill:#2980b9,stroke:#1f618d,stroke-width:3px,color:#fff
-    style OC fill:#27ae60,stroke:#229954,stroke-width:4px,color:#fff
-    style Parser fill:#8e44ad,stroke:#7d3c98,stroke-width:2px,color:#fff
-    style Monitor fill:#2c3e50,stroke:#1c2833,stroke-width:3px,color:#fff
-    style State fill:#34495e,stroke:#2c3e50,stroke-width:2px,color:#fff
-    style Success fill:#27ae60,stroke:#229954,stroke-width:4px,color:#fff
-    style Health fill:#9b59b6,stroke:#8e44ad,stroke-width:3px,color:#fff
-    style Endpoint fill:#3498db,stroke:#2980b9,stroke-width:2px,color:#fff
-    style Continue fill:#16a085,stroke:#138d75,stroke-width:2px,color:#fff
-    style Threshold fill:#e67e22,stroke:#d35400,stroke-width:3px,color:#fff
-    style Reconnect fill:#e74c3c,stroke:#c0392b,stroke-width:4px,color:#fff
-    style NM fill:#9b59b6,stroke:#8e44ad,stroke-width:2px,color:#fff
-
-    linkStyle 0 stroke:#3498db,stroke-width:3px
-    linkStyle 1 stroke:#95a5a6,stroke-width:2px
-    linkStyle 2 stroke:#f39c12,stroke-width:3px
-    linkStyle 3 stroke:#16a085,stroke-width:2px
-    linkStyle 4 stroke:#2980b9,stroke-width:3px
-    linkStyle 5 stroke:#27ae60,stroke-width:4px
-    linkStyle 6 stroke:#8e44ad,stroke-width:2px
-    linkStyle 7 stroke:#2c3e50,stroke-width:3px
-    linkStyle 8 stroke:#34495e,stroke-width:2px
-    linkStyle 9 stroke:#27ae60,stroke-width:3px
-    linkStyle 10 stroke:#9b59b6,stroke-width:2px,stroke-dasharray: 5 5
-    linkStyle 11 stroke:#3498db,stroke-width:2px
-    linkStyle 12 stroke:#16a085,stroke-width:2px
-    linkStyle 13 stroke:#e67e22,stroke-width:2px
-    linkStyle 14 stroke:#16a085,stroke-width:2px
-    linkStyle 15 stroke:#e74c3c,stroke-width:3px
-    linkStyle 16 stroke:#9b59b6,stroke-width:2px,stroke-dasharray: 5 5
-    linkStyle 17 stroke:#9b59b6,stroke-width:2px,stroke-dasharray: 5 5
-    linkStyle 18 stroke:#e74c3c,stroke-width:3px
-```
-
-**Key Components:**
-
-1. **CLI Layer** (`src/cli/`): Command handlers for `setup`, `vpn on/off/status`, `get-password`
-2. **Config Management** (`akon-core/src/config/`): TOML configuration with secure credential storage
-3. **Authentication** (`akon-core/src/auth/`): TOTP generation, keyring integration, password assembly
-4. **VPN Connector** (`akon-core/src/vpn/cli_connector.rs`): OpenConnect process lifecycle management
-5. **Output Parser** (`akon-core/src/vpn/output_parser.rs`): Real-time parsing of OpenConnect output
-6. **Health Monitoring** (`akon-core/src/vpn/health_check.rs`): Periodic endpoint checks for silent failures
-7. **Reconnection Manager** (`akon-core/src/vpn/reconnection.rs`): Exponential backoff retry logic
-8. **State Management** (`akon-core/src/vpn/state.rs`): Persistent connection state tracking
 
 ## Requirements
 
@@ -316,7 +210,7 @@ This feature is perfect for quick VPN connections - just type `akon` and go!
 
 akon automatically detects network interruptions and reconnects your VPN with intelligent retry logic.
 
-#### Configuration
+#### Additional configuration for reconnection
 
 Add a `[reconnection]` section to your config to enable automatic reconnection:
 
@@ -339,39 +233,110 @@ consecutive_failures_threshold = 2  # Health check failures before reconnection
 health_check_interval_secs = 60     # How often to check health
 ```
 
-#### How It Works
+## Why "akon"?
 
-**Network Interruption Detection:**
+The name "akon" is a playful triple entendre:
 
-- Monitors NetworkManager via D-Bus
-- Detects WiFi changes, suspend/resume, interface changes
-- Automatically triggers reconnection when network returns
+1. **Memorable Command**: A short, 4-letter command that's easy to type and remember
+2. **Project Evolution**: An acronym to [auto-openconnect](https://github.com/vcwild/auto-openconnect), the predecessor project
+3. **Cultural Reference**: A nod to the famous singer Akon, because connecting to VPN should be as smooth as his music
 
-**Health Monitoring:**
+## Architecture
 
-- Periodic HTTP checks to configured endpoint
-- Detects silent VPN failures (connection alive but traffic not flowing)
-- Triggers reconnection after consecutive failure threshold
+akon uses a **CLI process delegation** architecture:
 
-**Exponential Backoff:**
+- Spawns OpenConnect as a child process
+- Manages process lifecycle (spawn → monitor → terminate)
+- Parses output in real-time for connection events
+- Provides clean async API using Tokio
 
-- First attempt: 5 seconds
-- Second attempt: 10 seconds
-- Third attempt: 20 seconds
-- Fourth attempt: 40 seconds
-- Fifth attempt: 60 seconds (capped)
+This design eliminates FFI complexity while maintaining full OpenConnect functionality.
 
-**Example Reconnection Flow:**
+### How It Works
 
-```text
-1. VPN Connected → Network interruption detected
-2. Attempt 1 (after 5s) → Failed
-3. Attempt 2 (after 10s) → Failed
-4. Attempt 3 (after 20s) → Success!
-5. VPN Connected → Continues monitoring
+```mermaid
+flowchart TB
+    User([👤 User]) -->|$ akon vpn on| CLI[CLI Entry Point]
+
+    CLI --> Config[Load Config<br/>~/.config/akon/config.toml]
+    Config --> Keyring[🔐 Retrieve Credentials<br/>GNOME Keyring]
+
+    Keyring -->|PIN + TOTP Secret| TOTP[Generate TOTP Token<br/>Time-based OTP]
+    TOTP -->|PIN+OTP| Connector[CLI Connector<br/>Process Manager]
+
+    Connector -->|spawn sudo openconnect| OC[🌐 OpenConnect Process<br/>VPN Tunnel]
+
+    OC -->|stdout/stderr| Parser[Output Parser<br/>Regex Matching]
+    Parser -->|Connection Events| Monitor[Connection Monitor<br/>State Machine]
+
+    Monitor -->|Connected Event| State[Update State<br/>/tmp/akon_vpn_state.json]
+    State --> Success[✓ VPN Connected<br/>IP Assigned]
+
+    Success -.->|periodic checks| Health[🏥 Health Check<br/>HTTP Probe]
+    Health -->|HTTP GET| Endpoint[Internal Endpoint<br/>Connectivity Test]
+
+    Endpoint -->|Success| Continue[Continue Monitoring]
+    Endpoint -->|Failure| Threshold{Consecutive<br/>Failures ≥ threshold?}
+
+    Threshold -->|No| Continue
+    Threshold -->|Yes| Reconnect[🔄 Reconnection<br/>Exponential Backoff]
+
+    Monitor -.->|NetworkManager D-Bus| NM[📶 Network Events<br/>WiFi/Ethernet Changes]
+    NM -.->|suspend/resume<br/>WiFi change| Reconnect
+
+    Reconnect -->|backoff: 5s→10s→20s→40s→60s| Connector
+
+    style User fill:#34495e,stroke:#2c3e50,stroke-width:3px,color:#fff
+    style CLI fill:#3498db,stroke:#2980b9,stroke-width:3px,color:#fff
+    style Config fill:#95a5a6,stroke:#7f8c8d,stroke-width:2px,color:#fff
+    style Keyring fill:#f39c12,stroke:#e67e22,stroke-width:3px,color:#fff
+    style TOTP fill:#16a085,stroke:#138d75,stroke-width:2px,color:#fff
+    style Connector fill:#2980b9,stroke:#1f618d,stroke-width:3px,color:#fff
+    style OC fill:#27ae60,stroke:#229954,stroke-width:4px,color:#fff
+    style Parser fill:#8e44ad,stroke:#7d3c98,stroke-width:2px,color:#fff
+    style Monitor fill:#2c3e50,stroke:#1c2833,stroke-width:3px,color:#fff
+    style State fill:#34495e,stroke:#2c3e50,stroke-width:2px,color:#fff
+    style Success fill:#27ae60,stroke:#229954,stroke-width:4px,color:#fff
+    style Health fill:#9b59b6,stroke:#8e44ad,stroke-width:3px,color:#fff
+    style Endpoint fill:#3498db,stroke:#2980b9,stroke-width:2px,color:#fff
+    style Continue fill:#16a085,stroke:#138d75,stroke-width:2px,color:#fff
+    style Threshold fill:#e67e22,stroke:#d35400,stroke-width:3px,color:#fff
+    style Reconnect fill:#e74c3c,stroke:#c0392b,stroke-width:4px,color:#fff
+    style NM fill:#9b59b6,stroke:#8e44ad,stroke-width:2px,color:#fff
+
+    linkStyle 0 stroke:#3498db,stroke-width:3px
+    linkStyle 1 stroke:#95a5a6,stroke-width:2px
+    linkStyle 2 stroke:#f39c12,stroke-width:3px
+    linkStyle 3 stroke:#16a085,stroke-width:2px
+    linkStyle 4 stroke:#2980b9,stroke-width:3px
+    linkStyle 5 stroke:#27ae60,stroke-width:4px
+    linkStyle 6 stroke:#8e44ad,stroke-width:2px
+    linkStyle 7 stroke:#2c3e50,stroke-width:3px
+    linkStyle 8 stroke:#34495e,stroke-width:2px
+    linkStyle 9 stroke:#27ae60,stroke-width:3px
+    linkStyle 10 stroke:#9b59b6,stroke-width:2px,stroke-dasharray: 5 5
+    linkStyle 11 stroke:#3498db,stroke-width:2px
+    linkStyle 12 stroke:#16a085,stroke-width:2px
+    linkStyle 13 stroke:#e67e22,stroke-width:2px
+    linkStyle 14 stroke:#16a085,stroke-width:2px
+    linkStyle 15 stroke:#e74c3c,stroke-width:3px
+    linkStyle 16 stroke:#9b59b6,stroke-width:2px,stroke-dasharray: 5 5
+    linkStyle 17 stroke:#9b59b6,stroke-width:2px,stroke-dasharray: 5 5
+    linkStyle 18 stroke:#e74c3c,stroke-width:3px
 ```
 
-### Production (systemd)
+**Key Components:**
+
+1. **[CLI Layer](./src/cli)**: Command handlers for `setup`, `vpn on/off/status`, `get-password`
+2. **[Config Management](./akon-core/src/config)**: TOML configuration with secure credential storage
+3. **[Authentication](./akon-core/src/auth)**: TOTP generation, keyring integration, password assembly
+4. **[VPN Connector](./akon-core/src/vpn/cli_connector.rs)**: OpenConnect process lifecycle management
+5. **[Output Parser](./akon-core/src/vpn/output_parser.rs)**: Real-time parsing of OpenConnect output
+6. **[Health Monitoring](./akon-core/src/vpn/health_check.rs)**: Periodic endpoint checks for silent failures
+7. **[Reconnection Manager](./akon-core/src/vpn/reconnection.rs)**: Exponential backoff retry logic
+8. **[State Management](./akon-core/src/vpn/state.rs)**: Persistent connection state tracking
+
+### Logging
 
 Automatically detects systemd and logs to journal:
 
@@ -431,12 +396,7 @@ Contributions are welcome! Please:
 
 ## License
 
-This project is licensed under the MIT license.
-
-## Support
-
-- Issues: <https://github.com/vcwild/akon/issues>
-- Discussions: <https://github.com/vcwild/akon/discussions>
+This project is licensed under the [MIT license](LICENSE).
 
 ---
 
