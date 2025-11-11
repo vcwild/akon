@@ -4,9 +4,24 @@ set -e
 # Post-installation script for akon
 # Configures passwordless sudo for required commands
 
-OPENCONNECT_PATH=$(command -v openconnect)
-PKILL_PATH=$(command -v pkill)
-KILL_PATH=$(command -v kill || echo "/usr/bin/kill")
+# Find command paths
+OPENCONNECT_PATH=$(command -v openconnect 2>/dev/null || echo "")
+PKILL_PATH=$(command -v pkill 2>/dev/null || echo "")
+KILL_PATH=$(command -v kill 2>/dev/null || echo "/usr/bin/kill")
+
+# Verify paths exist
+if [ -z "$OPENCONNECT_PATH" ]; then
+    echo "Warning: openconnect not found. Please install it: sudo apt install openconnect"
+    OPENCONNECT_PATH="/usr/sbin/openconnect"
+fi
+
+if [ -z "$PKILL_PATH" ]; then
+    PKILL_PATH="/usr/bin/pkill"
+fi
+
+if [ ! -f "$KILL_PATH" ]; then
+    KILL_PATH="/usr/bin/kill"
+fi
 
 # Create sudoers.d file for akon
 SUDOERS_FILE="/etc/sudoers.d/akon"
@@ -14,9 +29,9 @@ SUDOERS_FILE="/etc/sudoers.d/akon"
 cat > "$SUDOERS_FILE" << EOF
 # Allow all users to run akon-required commands without password
 # This file is automatically managed by the akon package
-ALL ALL=(ALL) NOPASSWD: $OPENCONNECT_PATH
-ALL ALL=(ALL) NOPASSWD: $PKILL_PATH
-ALL ALL=(ALL) NOPASSWD: $KILL_PATH
+ALL ALL=(ALL) NOPASSWD: $OPENCONNECT_PATH *
+ALL ALL=(ALL) NOPASSWD: $PKILL_PATH *
+ALL ALL=(ALL) NOPASSWD: $KILL_PATH *
 EOF
 
 # Set proper permissions on sudoers file
@@ -31,9 +46,9 @@ fi
 
 echo "akon has been installed successfully!"
 echo "The following commands are now available without sudo password:"
-echo "  - openconnect"
-echo "  - pkill"
-echo "  - kill"
+echo "  - openconnect ($OPENCONNECT_PATH)"
+echo "  - pkill ($PKILL_PATH)"
+echo "  - kill ($KILL_PATH)"
 echo ""
 echo "Run 'akon --help' to get started."
 
