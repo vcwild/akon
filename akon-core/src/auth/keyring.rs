@@ -77,7 +77,18 @@ pub fn retrieve_pin(username: &str) -> Result<Pin, AkonError> {
         .get_password()
         .map_err(|_| AkonError::Keyring(KeyringError::PinNotFound))?;
 
-    Pin::new(pin_str).map_err(AkonError::Otp)
+    // Enforce the internal hard limit of 30 characters at retrieval time.
+    // This truncation is silent and ensures downstream consumers never see
+    // a PIN longer than 30 characters.
+    let pin_trimmed = pin_str.trim().to_string();
+    let stored = if pin_trimmed.chars().count() > 30 {
+        pin_trimmed.chars().take(30).collect::<String>()
+    } else {
+        pin_trimmed.clone()
+    };
+
+    // Return a Pin without re-applying strict 4-digit validation.
+    Ok(Pin::from_unchecked(stored))
 }
 
 /// Check if a PIN exists in the keyring for the given username

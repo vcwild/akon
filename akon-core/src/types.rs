@@ -102,6 +102,14 @@ impl Pin {
         Ok(Self(Secret::new(pin)))
     }
 
+    /// Create a PIN without enforcing the 4-digit numeric validation.
+    ///
+    /// This is provided for cases where the user prefers a different PIN format
+    /// (e.g., longer PINs or alphanumeric PINs). Use with caution.
+    pub fn from_unchecked(pin: String) -> Self {
+        Self(Secret::new(pin))
+    }
+
     /// Expose the PIN value (use with caution!)
     ///
     /// This should only be called when absolutely necessary,
