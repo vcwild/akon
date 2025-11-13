@@ -3,7 +3,8 @@
 //! Tests the get-password command behavior including error handling
 //! and output format validation.
 
-use akon_core::auth::keyring;
+use akon_core::types::{KEYRING_SERVICE_OTP, KEYRING_SERVICE_PIN};
+use std::io::Write;
 use std::env;
 use std::fs;
 use std::process::Command;
@@ -52,13 +53,43 @@ timeout = 30
     )
     .expect("Failed to write config file");
 
-    // Store test credentials in keyring
+    // Store test credentials in the system keyring so the spawned binary can read them.
+    // We do this with `secret-tool` (GNOME keyring). This test is intended for
+    // local interactive environments and is skipped in CI above.
     let test_username = "__akon_get_password_test__";
     let test_secret = "JBSWY3DPEHPK3PXP"; // Valid base32
-    let test_pin = akon_core::types::Pin::new("1234".to_string()).expect("Valid PIN");
+    let test_pin_value = "1234";
 
-    keyring::store_otp_secret(test_username, test_secret).expect("Failed to store test OTP secret");
-    keyring::store_pin(test_username, &test_pin).expect("Failed to store test PIN");
+    // Helper to store a secret using `secret-tool store` by writing the secret to stdin.
+    fn store_system_secret(service: &str, username: &str, secret: &str) -> Result<(), String> {
+        let mut child = Command::new("secret-tool")
+            .args(["store", "--label", "akon-test", "service", service, "username", username])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to spawn secret-tool: {}", e))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(secret.as_bytes())
+                .map_err(|e| format!("failed writing to secret-tool stdin: {}", e))?;
+        }
+
+        let status = child
+            .wait()
+            .map_err(|e| format!("failed waiting for secret-tool: {}", e))?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("secret-tool exited with status: {:?}", status.code()))
+        }
+    }
+
+    store_system_secret(KEYRING_SERVICE_OTP, test_username, test_secret)
+        .expect("Failed to store test OTP secret in system keyring");
+
+    store_system_secret(KEYRING_SERVICE_PIN, test_username, test_pin_value)
+        .expect("Failed to store test PIN in system keyring");
 
     // Run get-password command
     let output = Command::new(AKON_BINARY)
@@ -67,9 +98,13 @@ timeout = 30
         .output()
         .expect("Failed to run get-password");
 
-    // Clean up
-    let _ = keyring::delete_otp_secret(test_username);
-    let _ = keyring::delete_pin(test_username);
+    // Clean up: remove stored secrets from system keyring and restore env
+    let _ = Command::new("secret-tool")
+        .args(["clear", "service", KEYRING_SERVICE_OTP, "username", test_username])
+        .status();
+    let _ = Command::new("secret-tool")
+        .args(["clear", "service", KEYRING_SERVICE_PIN, "username", test_username])
+        .status();
     env::remove_var("AKON_CONFIG_DIR");
 
     // Should succeed and output a complete password (PIN + OTP)

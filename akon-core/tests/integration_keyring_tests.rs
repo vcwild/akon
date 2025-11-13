@@ -6,6 +6,8 @@
 #[cfg(feature = "mock-keyring")]
 #[test]
 fn integration_long_pin_truncation() {
+    use akon_core::auth::keyring;
+    use akon_core::types::Pin;
     let username = "integration_long_pin_user";
 
     // Clean up any existing entries
