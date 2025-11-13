@@ -1,6 +1,3 @@
-use akon_core::auth::keyring;
-use akon_core::types::Pin;
-
 // This integration test requires the mock keyring to be enabled via the
 // `mock-keyring` feature. Run with:
 //
