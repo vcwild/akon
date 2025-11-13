@@ -4,9 +4,9 @@
 //! and output format validation.
 
 use akon_core::types::{KEYRING_SERVICE_OTP, KEYRING_SERVICE_PIN};
-use std::io::Write;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::process::Command;
 
 const AKON_BINARY: &str = "target/debug/akon";
@@ -63,7 +63,15 @@ timeout = 30
     // Helper to store a secret using `secret-tool store` by writing the secret to stdin.
     fn store_system_secret(service: &str, username: &str, secret: &str) -> Result<(), String> {
         let mut child = Command::new("secret-tool")
-            .args(["store", "--label", "akon-test", "service", service, "username", username])
+            .args([
+                "store",
+                "--label",
+                "akon-test",
+                "service",
+                service,
+                "username",
+                username,
+            ])
             .stdin(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| format!("failed to spawn secret-tool: {}", e))?;
@@ -81,7 +89,10 @@ timeout = 30
         if status.success() {
             Ok(())
         } else {
-            Err(format!("secret-tool exited with status: {:?}", status.code()))
+            Err(format!(
+                "secret-tool exited with status: {:?}",
+                status.code()
+            ))
         }
     }
 
@@ -100,10 +111,22 @@ timeout = 30
 
     // Clean up: remove stored secrets from system keyring and restore env
     let _ = Command::new("secret-tool")
-        .args(["clear", "service", KEYRING_SERVICE_OTP, "username", test_username])
+        .args([
+            "clear",
+            "service",
+            KEYRING_SERVICE_OTP,
+            "username",
+            test_username,
+        ])
         .status();
     let _ = Command::new("secret-tool")
-        .args(["clear", "service", KEYRING_SERVICE_PIN, "username", test_username])
+        .args([
+            "clear",
+            "service",
+            KEYRING_SERVICE_PIN,
+            "username",
+            test_username,
+        ])
         .status();
     env::remove_var("AKON_CONFIG_DIR");
 
