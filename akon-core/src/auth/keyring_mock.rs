@@ -4,7 +4,7 @@
 //! system keyring access. Used in CI environments and for testing.
 
 use crate::error::{AkonError, KeyringError};
-use crate::types::Pin;
+use crate::types::{Pin, KEYRING_SERVICE_OTP, KEYRING_SERVICE_PIN};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -17,15 +17,9 @@ fn make_key(service: &str, username: &str) -> String {
     format!("{}:{}", service, username)
 }
 
-/// Service name used for storing credentials in the keyring (legacy)
-const SERVICE_NAME: &str = "akon-vpn";
-
-/// Service name for PIN storage
-const SERVICE_NAME_PIN: &str = "akon-vpn-pin";
-
 /// Store an OTP secret in the mock keyring
 pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
@@ -35,7 +29,7 @@ pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {
 
 /// Retrieve an OTP secret from the mock keyring
 pub fn retrieve_otp_secret(username: &str) -> Result<String, AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::RetrieveFailed))?;
@@ -47,7 +41,7 @@ pub fn retrieve_otp_secret(username: &str) -> Result<String, AkonError> {
 
 /// Check if an OTP secret exists in the mock keyring for the given username
 pub fn has_otp_secret(username: &str) -> Result<bool, AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
@@ -56,7 +50,7 @@ pub fn has_otp_secret(username: &str) -> Result<bool, AkonError> {
 
 /// Delete an OTP secret from the mock keyring
 pub fn delete_otp_secret(username: &str) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
@@ -66,7 +60,7 @@ pub fn delete_otp_secret(username: &str) -> Result<(), AkonError> {
 
 /// Store a PIN in the mock keyring
 pub fn store_pin(username: &str, pin: &Pin) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
@@ -76,7 +70,7 @@ pub fn store_pin(username: &str, pin: &Pin) -> Result<(), AkonError> {
 
 /// Retrieve a PIN from the mock keyring
 pub fn retrieve_pin(username: &str) -> Result<Pin, AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::PinNotFound))?;
@@ -84,12 +78,20 @@ pub fn retrieve_pin(username: &str) -> Result<Pin, AkonError> {
         .get(&key)
         .cloned()
         .ok_or(AkonError::Keyring(KeyringError::PinNotFound))?;
-    Pin::new(pin_str).map_err(AkonError::Otp)
+    // Mirror production retrieval behavior: enforce a 30-char internal limit
+    let pin_trimmed = pin_str.trim().to_string();
+    let stored = if pin_trimmed.chars().count() > 30 {
+        pin_trimmed.chars().take(30).collect::<String>()
+    } else {
+        pin_trimmed.clone()
+    };
+
+    Ok(Pin::from_unchecked(stored))
 }
 
 /// Check if a PIN exists in the mock keyring for the given username
 pub fn has_pin(username: &str) -> Result<bool, AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
@@ -98,7 +100,7 @@ pub fn has_pin(username: &str) -> Result<bool, AkonError> {
 
 /// Delete a PIN from the mock keyring
 pub fn delete_pin(username: &str) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
@@ -150,5 +152,53 @@ mod tests {
         // Clean up
         delete_pin(username).expect("Failed to delete PIN");
         assert!(!has_pin(username).expect("Failed to check PIN after delete"));
+    }
+
+    #[test]
+    fn test_long_pin_truncation_and_generate_password() {
+        use crate::auth::password::generate_password;
+
+        let username = "test_long_pin_user";
+
+        // Clean up first
+        let _ = delete_pin(username);
+        let _ = delete_otp_secret(username);
+
+        // Create a long PIN (>30 chars)
+        let long_pin = "012345678901234567890123456789012345".to_string(); // 36 chars
+        let pin = Pin::from_unchecked(long_pin.clone());
+
+        // Store long PIN and a valid OTP secret
+        store_pin(username, &pin).expect("Failed to store long PIN");
+        store_otp_secret(username, "JBSWY3DPEHPK3PXP").expect("Failed to store OTP secret");
+
+        // Now generate password using generate_password which should retrieve and truncate
+        let result = generate_password(username);
+        assert!(
+            result.is_ok(),
+            "generate_password failed: {:?}",
+            result.err()
+        );
+
+        let password = result.unwrap();
+        let pwd_str = password.expose();
+
+        // The stored PIN should be silently truncated to 30 chars
+        let expected_pin_prefix = long_pin.chars().take(30).collect::<String>();
+        assert!(
+            pwd_str.starts_with(&expected_pin_prefix),
+            "Password does not start with truncated PIN: {} vs {}",
+            pwd_str,
+            expected_pin_prefix
+        );
+
+        // OTP part should be 6 digits at the end
+        assert!(pwd_str.len() >= 6);
+        let otp_part = &pwd_str[pwd_str.len() - 6..];
+        assert!(otp_part.chars().all(|c| c.is_ascii_digit()));
+
+        // Clean up
+        delete_pin(username).expect("Failed to delete PIN");
+        delete_otp_secret(username).expect("Failed to delete OTP");
     }
 }

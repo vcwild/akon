@@ -4,15 +4,12 @@
 //! sensitive VPN credentials securely.
 
 use crate::error::{AkonError, KeyringError};
-use crate::types::{Pin, KEYRING_SERVICE_PIN};
+use crate::types::{Pin, KEYRING_SERVICE_OTP, KEYRING_SERVICE_PIN};
 use keyring::Entry;
-
-/// Service name used for storing credentials in the keyring (legacy)
-const SERVICE_NAME: &str = "akon-vpn";
 
 /// Store an OTP secret in the system keyring
 pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {
-    let entry = Entry::new(SERVICE_NAME, username)
+    let entry = Entry::new(KEYRING_SERVICE_OTP, username)
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
 
     entry
@@ -24,7 +21,7 @@ pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {
 
 /// Retrieve an OTP secret from the system keyring
 pub fn retrieve_otp_secret(username: &str) -> Result<String, AkonError> {
-    let entry = Entry::new(SERVICE_NAME, username)
+    let entry = Entry::new(KEYRING_SERVICE_OTP, username)
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
 
     entry
@@ -34,7 +31,7 @@ pub fn retrieve_otp_secret(username: &str) -> Result<String, AkonError> {
 
 /// Check if an OTP secret exists in the keyring for the given username
 pub fn has_otp_secret(username: &str) -> Result<bool, AkonError> {
-    let entry = Entry::new(SERVICE_NAME, username)
+    let entry = Entry::new(KEYRING_SERVICE_OTP, username)
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
 
     match entry.get_password() {

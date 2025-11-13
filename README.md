@@ -225,12 +225,12 @@ protocol = "f5"
 health_check_endpoint = "https://your-internal-server.example.com/"
 
 # Optional: Customize retry behavior (defaults shown)
-max_attempts = 5              # Maximum reconnection attempts
+max_attempts = 3              # Maximum reconnection attempts (default)
 base_interval_secs = 5        # Initial retry delay
 backoff_multiplier = 2        # Exponential backoff multiplier
 max_interval_secs = 60        # Maximum delay between attempts
-consecutive_failures_threshold = 2  # Health check failures before reconnection
-health_check_interval_secs = 60     # How often to check health
+consecutive_failures_threshold = 1  # Health check failures before reconnection (default)
+health_check_interval_secs = 10     # How often to check health (default)
 ```
 
 ## Why "akon"?
@@ -382,6 +382,35 @@ cargo tarpaulin --out Html
 
 # View coverage report
 open tarpaulin-report.html
+
+## Testing and mock keyring
+
+For tests that need a keyring implementation (CI or local), akon-core provides a lightweight
+"mock keyring" implementation which stores credentials in-memory. This is useful for unit and
+integration tests that must not interact with the system keyring.
+
+The mock keyring and its test-only dependency (`lazy_static`) are behind a feature flag
+so they are opt-in for consumers of `akon-core`:
+
+- Feature name: `mock-keyring`
+- Optional dependency: `lazy_static` (enabled only when `mock-keyring` is enabled)
+
+Run tests that require the mock keyring with:
+
+```bash
+# Run a single integration test using the mock keyring
+cargo test -p akon-core --test integration_keyring_tests --features mock-keyring -- --nocapture
+```
+
+Notes:
+
+- `lazy_static` is declared as an optional dependency enabled by `mock-keyring` and also present
+  as a `dev-dependency` so developers can run tests locally without enabling the feature.
+- This means the `lazy_static` crate is not linked into production binaries unless a consumer
+  enables `mock-keyring` explicitly.
+- The mock keyring mirrors production retrieval behavior for PINs (the runtime truncates
+  retrieved PINs to 30 characters). Tests validate truncation and password assembly.
+
 ```
 
 ## Contributing

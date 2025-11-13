@@ -57,6 +57,30 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --verbose
 
+  # User Story 2b: Run feature-gated integration test using mock-keyring
+  # This job runs the integration test that depends on the `mock-keyring` feature.
+  mock-keyring-test:
+    name: Test (mock-keyring integration)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust: [stable]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: make deps
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Run mock-keyring integration test
+        # Run only the integration test that is gated by the `mock-keyring` feature
+        run: cargo test -p akon-core --test integration_keyring_tests --features mock-keyring -- --nocapture
+
   # User Story 3: Build Verification
   # Verifies successful compilation in release mode
   build:

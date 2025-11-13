@@ -7,8 +7,8 @@ username = "testuser"
 [reconnection]
 backoff_multiplier = 2
 base_interval_secs = 5
-consecutive_failures_threshold = 3
+consecutive_failures_threshold = 1
 health_check_endpoint = "https://vpn.example.com/healthz"
-health_check_interval_secs = 60
-max_attempts = 5
+health_check_interval_secs = 10
+max_attempts = 3
 max_interval_secs = 60

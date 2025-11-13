@@ -15,12 +15,12 @@ fn test_parse_reconnection_config_from_file() {
     let policy = config
         .reconnection_policy()
         .expect("Should have reconnection policy");
-    assert_eq!(policy.max_attempts, 5);
+    assert_eq!(policy.max_attempts, 3);
     assert_eq!(policy.base_interval_secs, 5);
     assert_eq!(policy.backoff_multiplier, 2);
     assert_eq!(policy.max_interval_secs, 60);
-    assert_eq!(policy.consecutive_failures_threshold, 3);
-    assert_eq!(policy.health_check_interval_secs, 60);
+    assert_eq!(policy.consecutive_failures_threshold, 1);
+    assert_eq!(policy.health_check_interval_secs, 10);
     assert_eq!(
         policy.health_check_endpoint,
         "https://vpn.example.com/healthz"
@@ -130,7 +130,7 @@ fn test_health_check_endpoint_required() {
     // Given: A config with reconnection but missing endpoint
     let config_toml = r#"
         [reconnection]
-        max_attempts = 5
+        max_attempts = 3
     "#;
 
     // When: Parsing the config

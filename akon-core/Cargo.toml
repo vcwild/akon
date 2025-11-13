@@ -1,11 +1,12 @@
 [package]
 edition = "2021"
 name = "akon-core"
-version = "1.2.1"
+version = "1.2.2"
 
 [features]
 default = []
-mock-keyring = []
+# Enable the mock keyring implementation and its test-only dependencies
+mock-keyring = ["lazy_static"]
 
 [lints.rust]
 dead_code = "deny"
@@ -29,6 +30,8 @@ data-encoding = "2.9.0"
 sha1 = "0.10.6"
 regex = "1.10"
 chrono = "0.4"
+# lazy_static is optional and enabled via the `mock-keyring` feature
+lazy_static = { version = "1.5", optional = true }
 
 # Network interruption detection dependencies
 zbus = "4.0"
