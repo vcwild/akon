@@ -4,7 +4,7 @@
 //! system keyring access. Used in CI environments and for testing.
 
 use crate::error::{AkonError, KeyringError};
-use crate::types::Pin;
+use crate::types::{Pin, KEYRING_SERVICE_OTP, KEYRING_SERVICE_PIN};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -17,15 +17,9 @@ fn make_key(service: &str, username: &str) -> String {
     format!("{}:{}", service, username)
 }
 
-/// Service name used for storing credentials in the keyring (legacy)
-const SERVICE_NAME: &str = "akon-vpn";
-
-/// Service name for PIN storage
-const SERVICE_NAME_PIN: &str = "akon-vpn-pin";
-
 /// Store an OTP secret in the mock keyring
 pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
@@ -35,7 +29,7 @@ pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {
 
 /// Retrieve an OTP secret from the mock keyring
 pub fn retrieve_otp_secret(username: &str) -> Result<String, AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::RetrieveFailed))?;
@@ -47,7 +41,7 @@ pub fn retrieve_otp_secret(username: &str) -> Result<String, AkonError> {
 
 /// Check if an OTP secret exists in the mock keyring for the given username
 pub fn has_otp_secret(username: &str) -> Result<bool, AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
@@ -56,7 +50,7 @@ pub fn has_otp_secret(username: &str) -> Result<bool, AkonError> {
 
 /// Delete an OTP secret from the mock keyring
 pub fn delete_otp_secret(username: &str) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME, username);
+    let key = make_key(KEYRING_SERVICE_OTP, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
@@ -66,7 +60,7 @@ pub fn delete_otp_secret(username: &str) -> Result<(), AkonError> {
 
 /// Store a PIN in the mock keyring
 pub fn store_pin(username: &str, pin: &Pin) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
@@ -76,7 +70,7 @@ pub fn store_pin(username: &str, pin: &Pin) -> Result<(), AkonError> {
 
 /// Retrieve a PIN from the mock keyring
 pub fn retrieve_pin(username: &str) -> Result<Pin, AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::PinNotFound))?;
@@ -97,7 +91,7 @@ pub fn retrieve_pin(username: &str) -> Result<Pin, AkonError> {
 
 /// Check if a PIN exists in the mock keyring for the given username
 pub fn has_pin(username: &str) -> Result<bool, AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::ServiceUnavailable))?;
@@ -106,7 +100,7 @@ pub fn has_pin(username: &str) -> Result<bool, AkonError> {
 
 /// Delete a PIN from the mock keyring
 pub fn delete_pin(username: &str) -> Result<(), AkonError> {
-    let key = make_key(SERVICE_NAME_PIN, username);
+    let key = make_key(KEYRING_SERVICE_PIN, username);
     let mut keyring = MOCK_KEYRING
         .lock()
         .map_err(|_| AkonError::Keyring(KeyringError::StoreFailed))?;
