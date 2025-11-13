@@ -6,7 +6,7 @@ use akon_core::{
     auth::keyring,
     config::{toml_config, VpnConfig},
     error::AkonError,
-    types::OtpSecret,
+    types::{OtpSecret, Pin},
 };
 use colored::Colorize;
 use std::io::{self, Write};
@@ -54,6 +54,8 @@ pub fn run_setup() -> Result<(), AkonError> {
     // Collect configuration interactively
     let config = collect_vpn_config()?;
     let otp_secret = collect_otp_secret()?;
+    let pin = collect_pin()?;
+
     let reconnection_policy = collect_reconnection_config()?;
 
     // Validate configuration
@@ -77,7 +79,8 @@ pub fn run_setup() -> Result<(), AkonError> {
     // Save config to TOML file with reconnection policy
     toml_config::save_config_with_reconnection(&config, reconnection_policy.as_ref())?;
 
-    // Store OTP secret in keyring
+    // Store PIN and OTP secret in keyring
+    keyring::store_pin(&config.username, &pin)?;
     keyring::store_otp_secret(&config.username, otp_secret.expose())?;
 
     println!(
@@ -332,6 +335,38 @@ fn collect_otp_secret() -> Result<OtpSecret, AkonError> {
                 continue;
             }
         }
+    }
+}
+
+/// Collect 4-digit PIN interactively
+fn collect_pin() -> Result<Pin, AkonError> {
+    println!();
+    println!("PIN Configuration:");
+    println!("-----------------");
+
+    println!(
+        "Enter your VPN PIN (any format). This will be stored securely in your system keyring."
+    );
+    println!();
+
+    loop {
+        let pin_str = prompt_password("PIN")?;
+        let candidate = pin_str.trim().to_string();
+
+        if candidate.is_empty() {
+            println!("❌ PIN cannot be empty. Please try again.");
+            continue;
+        }
+
+        // Enforce a hard internal limit of 30 characters for stored PINs.
+        // This truncation is silent (hidden from the user) per request.
+        let stored = if candidate.chars().count() > 30 {
+            candidate.chars().take(30).collect::<String>()
+        } else {
+            candidate.clone()
+        };
+
+        return Ok(Pin::from_unchecked(stored));
     }
 }
 
