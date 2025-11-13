@@ -225,12 +225,12 @@ protocol = "f5"
 health_check_endpoint = "https://your-internal-server.example.com/"
 
 # Optional: Customize retry behavior (defaults shown)
-max_attempts = 5              # Maximum reconnection attempts
+max_attempts = 3              # Maximum reconnection attempts (default)
 base_interval_secs = 5        # Initial retry delay
 backoff_multiplier = 2        # Exponential backoff multiplier
 max_interval_secs = 60        # Maximum delay between attempts
-consecutive_failures_threshold = 2  # Health check failures before reconnection
-health_check_interval_secs = 60     # How often to check health
+consecutive_failures_threshold = 1  # Health check failures before reconnection (default)
+health_check_interval_secs = 10     # How often to check health (default)
 ```
 
 ## Why "akon"?

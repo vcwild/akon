@@ -103,12 +103,12 @@ mod reconnection_policy_tests {
         let policy: ReconnectionPolicy = toml::from_str(toml_str).unwrap();
 
         // Check defaults are applied
-        assert_eq!(policy.max_attempts, 5); // default
+        assert_eq!(policy.max_attempts, 3); // default (updated)
         assert_eq!(policy.base_interval_secs, 5); // default
         assert_eq!(policy.backoff_multiplier, 2); // default
         assert_eq!(policy.max_interval_secs, 60); // default
-        assert_eq!(policy.consecutive_failures_threshold, 3); // default
-        assert_eq!(policy.health_check_interval_secs, 60); // default
+        assert_eq!(policy.consecutive_failures_threshold, 1); // default (updated)
+        assert_eq!(policy.health_check_interval_secs, 10); // default (updated)
         assert_eq!(
             policy.health_check_endpoint,
             "https://vpn.example.com/health"

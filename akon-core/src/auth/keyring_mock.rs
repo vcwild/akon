@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn test_long_pin_truncation_and_generate_password() {
-    use crate::auth::password::generate_password;
+        use crate::auth::password::generate_password;
 
         let username = "test_long_pin_user";
 
@@ -174,7 +174,11 @@ mod tests {
 
         // Now generate password using generate_password which should retrieve and truncate
         let result = generate_password(username);
-        assert!(result.is_ok(), "generate_password failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "generate_password failed: {:?}",
+            result.err()
+        );
 
         let password = result.unwrap();
         let pwd_str = password.expose();

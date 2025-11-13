@@ -4,9 +4,8 @@
 //! sensitive VPN credentials securely.
 
 use crate::error::{AkonError, KeyringError};
-use crate::types::{Pin, KEYRING_SERVICE_PIN, KEYRING_SERVICE_OTP};
+use crate::types::{Pin, KEYRING_SERVICE_OTP, KEYRING_SERVICE_PIN};
 use keyring::Entry;
-
 
 /// Store an OTP secret in the system keyring
 pub fn store_otp_secret(username: &str, secret: &str) -> Result<(), AkonError> {

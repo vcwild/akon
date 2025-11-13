@@ -33,7 +33,12 @@ fn integration_long_pin_truncation() {
 
     // Expect the password to start with the first 30 chars of the stored PIN
     let expected_prefix: String = long_pin.chars().take(30).collect();
-    assert!(pwd.starts_with(&expected_prefix), "Password prefix mismatch: {} vs {}", pwd, expected_prefix);
+    assert!(
+        pwd.starts_with(&expected_prefix),
+        "Password prefix mismatch: {} vs {}",
+        pwd,
+        expected_prefix
+    );
 
     // Clean up
     let _ = keyring::delete_pin(username);

@@ -39,7 +39,7 @@ pub struct ReconnectionPolicy {
 }
 
 fn default_max_attempts() -> u32 {
-    5
+    3
 }
 fn default_base_interval() -> u32 {
     5
@@ -51,10 +51,10 @@ fn default_max_interval() -> u32 {
     60
 }
 fn default_consecutive_failures() -> u32 {
-    3
+    1
 }
 fn default_health_check_interval() -> u64 {
-    60
+    10
 }
 
 impl ReconnectionPolicy {
