@@ -379,11 +379,15 @@ cargo test
 # Run with coverage (requires cargo-tarpaulin)
 cargo install cargo-tarpaulin
 cargo tarpaulin --out Html
+```
 
-# View coverage report
+View coverage report
+
+```bash
 open tarpaulin-report.html
+```
 
-## Testing and mock keyring
+Testing and mock keyring
 
 For tests that need a keyring implementation (CI or local), akon-core provides a lightweight
 "mock keyring" implementation which stores credentials in-memory. This is useful for unit and
@@ -395,7 +399,7 @@ so they are opt-in for consumers of `akon-core`:
 - Feature name: `mock-keyring`
 - Optional dependency: `lazy_static` (enabled only when `mock-keyring` is enabled)
 
-Run tests that require the mock keyring with:
+Run tests that require the mock keyring with
 
 ```bash
 # Run a single integration test using the mock keyring
@@ -410,8 +414,6 @@ Notes:
   enables `mock-keyring` explicitly.
 - The mock keyring mirrors production retrieval behavior for PINs (the runtime truncates
   retrieved PINs to 30 characters). Tests validate truncation and password assembly.
-
-```
 
 ## Contributing
 
