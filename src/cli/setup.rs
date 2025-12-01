@@ -13,12 +13,11 @@ use std::io::{self, Write};
 
 /// Run the setup command
 pub fn run_setup() -> Result<(), AkonError> {
+    println!("[SETUP] {}", "akon VPN Setup".bright_white().bold());
     println!(
-        "{} {}",
-        "🔐".bright_magenta(),
-        "akon VPN Setup".bright_white().bold()
+        "{}",
+        "========================================".bright_white()
     );
-    println!("{}", "=================".bright_white());
     println!();
     println!(
         "{}",
@@ -38,7 +37,7 @@ pub fn run_setup() -> Result<(), AkonError> {
     if let Ok(true) = toml_config::config_exists() {
         println!(
             "{} {}",
-            "⚠".bright_yellow(),
+            "[WARN]".bright_yellow(),
             "Existing configuration detected.".bright_yellow()
         );
         if !prompt_yes_no("Overwrite existing setup?", false)? {
@@ -72,7 +71,7 @@ pub fn run_setup() -> Result<(), AkonError> {
     println!();
     println!(
         "{} {}",
-        "💾".bright_cyan(),
+        "[SAVE]".bright_cyan(),
         "Saving configuration...".bright_white()
     );
 
@@ -85,15 +84,15 @@ pub fn run_setup() -> Result<(), AkonError> {
 
     println!(
         "{} {}",
-        "✅".bright_green(),
+        "[OK]".bright_green().bold(),
         "Setup complete!".bright_green().bold()
     );
     println!();
     println!("{}", "You can now use:".bright_white());
-    println!("  {} - Connect to VPN", "akon vpn on".bright_cyan());
-    println!("  {} - Disconnect from VPN", "akon vpn off".bright_cyan());
+    println!("   {} - Connect to VPN", "akon vpn on".bright_cyan());
+    println!("   {} - Disconnect from VPN", "akon vpn off".bright_cyan());
     println!(
-        "  {} - Generate OTP token manually",
+        "   {} - Generate OTP token manually",
         "akon get-password".bright_cyan()
     );
 
@@ -110,9 +109,13 @@ fn check_keyring_availability() -> Result<(), AkonError> {
             Ok(())
         }
         Err(AkonError::Keyring(_)) => {
-            println!("❌ Keyring is not available or locked.");
-            println!("Please ensure your system keyring is unlocked and available.");
-            println!("On GNOME systems, this is usually handled automatically.");
+            println!(
+                "{} {}",
+                "[ERROR]".bright_red().bold(),
+                "Keyring is not available or locked.".bright_red().bold()
+            );
+            println!("   Please ensure your system keyring is unlocked and available.");
+            println!("   On GNOME systems, this is usually handled automatically.");
             Err(AkonError::Keyring(
                 akon_core::error::KeyringError::ServiceUnavailable,
             ))
@@ -299,7 +302,7 @@ fn collect_reconnection_config(
 
     println!();
     println!(
-        "{} {}",
+        "   {} {}",
         "✓".bright_green(),
         "Reconnection configuration validated".bright_green()
     );
@@ -321,7 +324,13 @@ fn collect_otp_secret() -> Result<OtpSecret, AkonError> {
         let secret = prompt_password("TOTP Secret")?;
 
         if secret.trim().is_empty() {
-            println!("❌ Secret cannot be empty. Please try again.");
+            println!(
+                "{} {}",
+                "[ERROR]".bright_red().bold(),
+                "Secret cannot be empty. Please try again."
+                    .bright_red()
+                    .bold()
+            );
             continue;
         }
 
@@ -330,8 +339,14 @@ fn collect_otp_secret() -> Result<OtpSecret, AkonError> {
         match otp_secret.validate_base32() {
             Ok(_) => return Ok(otp_secret),
             Err(_) => {
-                println!("❌ Invalid Base32 format. Please check your secret and try again.");
-                println!("   Valid characters: A-Z, 2-7, =, /");
+                println!(
+                    "{} {}",
+                    "[ERROR]".bright_red().bold(),
+                    "Invalid Base32 format. Please check your secret and try again."
+                        .bright_red()
+                        .bold()
+                );
+                println!("        Valid characters: A-Z, 2-7, =, /");
                 continue;
             }
         }
@@ -354,7 +369,11 @@ fn collect_pin() -> Result<Pin, AkonError> {
         let candidate = pin_str.trim().to_string();
 
         if candidate.is_empty() {
-            println!("❌ PIN cannot be empty. Please try again.");
+            println!(
+                "{} {}",
+                "[ERROR]".bright_red().bold(),
+                "PIN cannot be empty. Please try again.".bright_red().bold()
+            );
             continue;
         }
 
@@ -385,7 +404,13 @@ fn prompt_required(prompt: &str, default: &str) -> Result<String, AkonError> {
             if !default.is_empty() {
                 return Ok(default.to_string());
             }
-            println!("❌ This field is required. Please enter a value.");
+            println!(
+                "{} {}",
+                "[ERROR]".bright_red().bold(),
+                "This field is required. Please enter a value."
+                    .bright_red()
+                    .bold()
+            );
             continue;
         }
 
