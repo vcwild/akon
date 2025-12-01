@@ -27,16 +27,16 @@ enum Commands {
     ///
     /// CONFIGURATION FIELDS:
     ///
-    /// • Server: VPN server hostname or IP address (e.g., vpn.example.com)
+    /// - Server: VPN server hostname or IP address (e.g., vpn.example.com)
     ///
-    /// • Username: Your VPN account username
+    /// - Username: Your VPN account username
     ///
-    /// • PIN: Numeric PIN for authentication (stored securely in keyring)
+    /// - PIN: Numeric PIN for authentication (stored securely in keyring)
     ///
-    /// • TOTP Secret: Base32-encoded secret for generating time-based one-time passwords
+    /// - TOTP Secret: Base32-encoded secret for generating time-based one-time passwords
     ///   (stored securely in keyring)
     ///
-    /// • Protocol: VPN protocol type
+    /// - Protocol: VPN protocol type
     ///   - anyconnect: Cisco AnyConnect SSL VPN
     ///   - gp: Palo Alto Networks GlobalProtect
     ///   - nc: Juniper Network Connect
@@ -45,18 +45,18 @@ enum Commands {
     ///   - fortinet: Fortinet FortiGate SSL VPN
     ///   - array: Array Networks SSL VPN
     ///
-    /// • Timeout: Connection timeout in seconds (default: 30)
+    /// - Timeout: Connection timeout in seconds (default: 30)
     ///
-    /// • No DTLS: Disable DTLS and use only TCP/TLS (default: false)
+    /// - No DTLS: Disable DTLS and use only TCP/TLS (default: false)
     ///   Use this if DTLS is blocked by firewall or causes connection issues
     ///
-    /// • Lazy Mode: When enabled, running 'akon' without arguments automatically
+    /// - Lazy Mode: When enabled, running 'akon' without arguments automatically
     ///   connects to VPN. When disabled, you must use 'akon vpn on' (default: false)
     ///
     /// STORAGE:
     ///
-    /// • Config file: ~/.config/akon/config.toml (non-sensitive settings)
-    /// • Credentials: GNOME Keyring (PIN and TOTP secret, encrypted)
+    /// - Config file: ~/.config/akon/config.toml (non-sensitive settings)
+    /// - Credentials: GNOME Keyring (PIN and TOTP secret, encrypted)
     ///
     /// EXAMPLES:
     ///

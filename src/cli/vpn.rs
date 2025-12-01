@@ -27,12 +27,12 @@ fn state_file_path() -> PathBuf {
 fn handle_cleanup_result(result: Result<usize, AkonError>, context: &str) {
     match result {
         Ok(0) => {
-            println!("  {} No orphaned processes found", "✓".bright_green());
+            println!("   {} No orphaned processes found", "✓".bright_green());
             debug!("{}: No orphaned OpenConnect processes to clean up", context);
         }
         Ok(count) => {
             println!(
-                "  {} Terminated {} orphaned process(es)",
+                "   {} Terminated {} orphaned process(es)",
                 "✓".bright_green(),
                 count.to_string().bright_yellow()
             );
@@ -45,7 +45,7 @@ fn handle_cleanup_result(result: Result<usize, AkonError>, context: &str) {
             warn!("{}: Orphan cleanup failed: {}", context, e);
             println!(
                 "  {} Warning: Could not verify all processes cleaned up",
-                "⚠".bright_yellow()
+                "[WARN]".bright_yellow()
             );
         }
     }
@@ -57,86 +57,102 @@ fn print_error_suggestions(error: &VpnError) {
         VpnError::AuthenticationFailed => {
             eprintln!(
                 "\n{} {}",
-                "💡".bright_yellow(),
+                "[TIP]".bright_yellow(),
                 "Suggestions:".bright_white().bold()
             );
-            eprintln!("   {} Verify your PIN is correct", "•".bright_blue());
+            eprintln!("   {} Verify your PIN is correct", "-".bright_blue());
             eprintln!(
                 "   {} Check if your TOTP secret is valid",
-                "•".bright_blue()
+                "-".bright_blue()
             );
             eprintln!(
                 "   {} Run {} to reconfigure credentials",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "akon setup".bright_cyan()
             );
-            eprintln!("   {} Ensure your account is not locked", "•".bright_blue());
+            eprintln!("   {} Ensure your account is not locked", "-".bright_blue());
         }
         VpnError::NetworkError { reason } if reason.contains("SSL") || reason.contains("TLS") => {
-            eprintln!("\n💡 Suggestions:");
-            eprintln!("   • Check your internet connection");
-            eprintln!("   • Verify the VPN server address is correct");
-            eprintln!("   • The server may be experiencing issues");
-            eprintln!("   • Try again in a few moments");
+            eprintln!(
+                "\n{} {}",
+                "[TIP]".bright_yellow(),
+                "Suggestions:".bright_white().bold()
+            );
+            eprintln!("   - Check your internet connection");
+            eprintln!("   - Verify the VPN server address is correct");
+            eprintln!("   - The server may be experiencing issues");
+            eprintln!("   - Try again in a few moments");
         }
         VpnError::NetworkError { reason } if reason.contains("Certificate") => {
-            eprintln!("\n💡 Suggestions:");
-            eprintln!("   • The server certificate may be self-signed");
-            eprintln!("   • Contact your VPN administrator for certificate details");
-            eprintln!("   • You may need to add the certificate to your trusted store");
+            eprintln!(
+                "\n{} {}",
+                "[TIP]".bright_yellow(),
+                "Suggestions:".bright_white().bold()
+            );
+            eprintln!("   - The server certificate may be self-signed");
+            eprintln!("   - Contact your VPN administrator for certificate details");
+            eprintln!("   - You may need to add the certificate to your trusted store");
         }
         VpnError::NetworkError { reason } if reason.contains("DNS") => {
-            eprintln!("\n💡 Suggestions:");
-            eprintln!("   • Check your DNS configuration");
-            eprintln!("   • Verify the VPN server hostname in config.toml");
-            eprintln!("   • Try using the server's IP address instead");
-            eprintln!("   • Check /etc/resolv.conf for DNS settings");
+            eprintln!(
+                "\n{} {}",
+                "[TIP]".bright_yellow(),
+                "Suggestions:".bright_white().bold()
+            );
+            eprintln!("   - Check your DNS configuration");
+            eprintln!("   - Verify the VPN server hostname in config.toml");
+            eprintln!("   - Try using the server's IP address instead");
+            eprintln!("   - Check /etc/resolv.conf for DNS settings");
         }
         VpnError::ConnectionFailed { reason }
             if reason.contains("TUN") || reason.contains("sudo") =>
         {
-            eprintln!("\n💡 Suggestions:");
-            eprintln!("   • VPN requires root privileges to create TUN device");
-            eprintln!("   • Run with: sudo akon vpn on");
-            eprintln!("   • Ensure the 'tun' kernel module is loaded");
-            eprintln!("   • Check: lsmod | grep tun");
+            eprintln!(
+                "\n{} {}",
+                "[TIP]".bright_yellow(),
+                "Suggestions:".bright_white().bold()
+            );
+            eprintln!("   - VPN requires root privileges to create TUN device");
+            eprintln!("   - Run with: sudo akon vpn on");
+            eprintln!("   - Ensure the 'tun' kernel module is loaded");
+            eprintln!("   - Check: lsmod | grep tun");
         }
         VpnError::ProcessSpawnError { .. } => {
             eprintln!(
                 "\n{} {}",
-                "💡".bright_yellow(),
+                "[TIP]".bright_yellow(),
                 "Suggestions:".bright_white().bold()
             );
-            eprintln!("   {} OpenConnect may not be installed", "•".bright_blue());
+            eprintln!("   {} OpenConnect may not be installed", "-".bright_blue());
             eprintln!(
                 "   {} Install with: {}",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "sudo apt install openconnect".bright_cyan()
             );
             eprintln!(
                 "   {} Or for RHEL/Fedora: {}",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "sudo dnf install openconnect".bright_cyan()
             );
             eprintln!(
                 "   {} Verify installation: {}",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "which openconnect".bright_cyan()
             );
         }
         VpnError::ConnectionFailed { reason } if reason.contains("Permission denied") => {
             eprintln!(
                 "\n{} {}",
-                "💡".bright_yellow(),
+                "[TIP]".bright_yellow(),
                 "Suggestions:".bright_white().bold()
             );
             eprintln!(
                 "   {} This command requires elevated privileges",
-                "•".bright_blue()
+                "-".bright_blue()
             );
             eprintln!(
                 "   {} Run with: {}",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "sudo akon vpn on".bright_cyan()
             );
         }
@@ -144,22 +160,22 @@ fn print_error_suggestions(error: &VpnError) {
             // Generic suggestions for other errors
             eprintln!(
                 "\n{} {}",
-                "💡".bright_yellow(),
+                "[TIP]".bright_yellow(),
                 "Suggestions:".bright_white().bold()
             );
             eprintln!(
                 "   {} Check system logs: {}",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "journalctl -xe".bright_cyan()
             );
             eprintln!(
                 "   {} Verify configuration: {}",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "cat ~/.config/akon/config.toml".bright_cyan()
             );
             eprintln!(
                 "   {} Try reconnecting: {}",
-                "•".bright_blue(),
+                "-".bright_blue(),
                 "akon vpn on".bright_cyan()
             );
         }
@@ -615,7 +631,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                             );
                             println!(
                                 "{} {}",
-                                "🔄".bright_yellow(),
+                                "[FORCE]".bright_yellow(),
                                 "Force reconnection requested - disconnecting and resetting..."
                                     .bright_yellow()
                             );
@@ -645,24 +661,24 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
 
                             // Clean up state file (reset functionality)
                             let _ = fs::remove_file(&state_path);
-                            println!("  {} Cleared connection state", "✓".bright_green());
+                            println!("   {} Cleared connection state", "✓".bright_green());
                             info!("Force flag cleared state file (reset)");
                         } else {
                             // Connection is already active - return early
                             println!(
                                 "{} {}",
-                                "✓".bright_green().bold(),
+                                "[OK]".bright_green().bold(),
                                 "VPN is already connected".bright_green()
                             );
                             if let Some(ip) = state.get("ip") {
                                 println!(
-                                    "  {} {}",
+                                    "   {} {}",
                                     "IP address:".bright_white(),
                                     ip.as_str().unwrap_or("unknown").bright_cyan().bold()
                                 );
                             }
                             println!(
-                                "\n{} {} to see full status",
+                                "\n   {} {} to see full status",
                                 "Run".dimmed(),
                                 "akon vpn status".bright_cyan()
                             );
@@ -673,7 +689,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                         info!("Found stale connection state (PID: {}), cleaning up", pid);
                         println!(
                             "{} {}",
-                            "⚠".bright_yellow(),
+                            "[WARN]".bright_yellow(),
                             "Cleaning up stale connection...".dimmed()
                         );
                         let _ = fs::remove_file(&state_path);
@@ -710,7 +726,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
     // Start connection
     println!(
         "{} {} {}",
-        "🔌".bright_cyan(),
+        ">>".bright_cyan(),
         "Connecting to VPN server:".bright_white().bold(),
         config.server.bright_yellow()
     );
@@ -730,7 +746,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                     info!(pid = pid, "VPN process spawned");
                 }
                 ConnectionEvent::Authenticating { message } => {
-                    println!("{} {}", "🔐".bright_magenta(), message.bright_white());
+                    println!("{} {}", "[AUTH]".bright_magenta(), message.bright_white());
                     info!(phase = "authentication", message = %message, "Authentication in progress");
                 }
                 ConnectionEvent::F5SessionEstablished { .. } => {
@@ -742,7 +758,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                     info!(device = %device, ip = %ip, "TUN device configured");
                 }
                 ConnectionEvent::Connected { ip, device } => {
-                    println!("{} {}", "✓".bright_green().bold(), "VPN connection established".bright_green().bold());
+                    println!("{} {}", "[OK]".bright_green().bold(), "VPN connection established".bright_green().bold());
                     info!(ip = %ip, device = %device, "VPN connection fully established");
 
                     // Get PID from connector for state persistence
@@ -784,7 +800,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                                 error!("Failed to spawn reconnection manager daemon: {}", e);
                                 warn!("Continuing without reconnection manager");
                             } else {
-                                println!("{} {}", "🔄".bright_cyan(), "Reconnection manager started in background".dimmed());
+                                println!("{} {}", "[AUTO]".bright_cyan(), "Reconnection manager started in background".dimmed());
                             }
                         } else {
                             warn!("Cannot start reconnection manager: no PID available");
@@ -797,7 +813,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                 }
                 ConnectionEvent::Error { kind, raw_output } => {
                     error!("VPN error: {} - {}", kind, raw_output);
-                    eprintln!("{} {}", "❌".bright_red(), format!("Error: {}", kind).bright_red().bold());
+                    eprintln!("[ERROR] {}", format!("Error: {}", kind).bright_red().bold());
                     if !raw_output.is_empty() {
                         eprintln!("   {} {}", "Details:".bright_yellow(), raw_output.dimmed());
                     }
@@ -809,7 +825,7 @@ pub async fn run_vpn_on(force: bool) -> Result<(), AkonError> {
                 }
                 ConnectionEvent::Disconnected { reason } => {
                     info!("VPN disconnected: {:?}", reason);
-                    println!("{} VPN disconnected: {:?}", "⚠".bright_yellow(), reason);
+                    println!("{} VPN disconnected: {:?}", "[WARN]".bright_yellow(), reason);
                     return Ok(());
                 }
                 ConnectionEvent::UnknownOutput { line } => {
@@ -838,12 +854,16 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
     let state_path = state_file_path();
 
     if !state_path.exists() {
-        println!("No active VPN connection found");
+        println!(
+            "{} {}",
+            "[WARN]".bright_yellow(),
+            "No active VPN connection found".bright_white()
+        );
 
         // Still check for and clean up any orphaned OpenConnect processes
         println!(
             "{} {}",
-            "🧹".bright_yellow(),
+            "[CLEAN]".bright_yellow(),
             "Checking for orphaned OpenConnect processes...".bright_white()
         );
 
@@ -891,7 +911,7 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
         // Process exists, try graceful termination
         println!(
             "{} {} (PID: {})...",
-            "🔌".bright_cyan(),
+            ">>".bright_cyan(),
             "Disconnecting VPN".bright_white().bold(),
             pid.to_string().bright_yellow()
         );
@@ -928,8 +948,8 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
                 // Process no longer exists
                 println!(
                     "{} {}",
-                    "✓".bright_green().bold(),
-                    "VPN disconnected gracefully".bright_green()
+                    "[OK]".bright_green().bold(),
+                    "VPN disconnected gracefully".bright_green().bold()
                 );
                 info!("OpenConnect process terminated gracefully");
                 break;
@@ -938,7 +958,7 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
                 warn!("Graceful shutdown timeout, force killing process");
                 println!(
                     "{} {}",
-                    "⚠".bright_yellow(),
+                    "[WARN]".bright_yellow(),
                     "Process not responding, force killing...".bright_yellow()
                 );
 
@@ -955,7 +975,7 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 println!(
                     "{} {}",
-                    "✓".bright_green().bold(),
+                    "[OK]".bright_green().bold(),
                     "VPN disconnected (forced)".bright_green()
                 );
                 info!("OpenConnect process force-killed");
@@ -967,7 +987,7 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
         // Process not running, stale state (edge case from vpn-off-command.md)
         println!(
             "{} {}",
-            "⚠".bright_yellow(),
+            "[WARN]".bright_yellow(),
             "VPN process no longer running (stale state)".dimmed()
         );
         info!(pid = pid.as_raw(), "Cleaning up stale connection state");
@@ -990,7 +1010,7 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
     // Comprehensive cleanup: Terminate any orphaned OpenConnect processes
     println!(
         "{} {}",
-        "🧹".bright_yellow(),
+        "[CLEAN]".bright_yellow(),
         "Cleaning up any orphaned OpenConnect processes...".bright_white()
     );
 
@@ -1001,7 +1021,7 @@ pub async fn run_vpn_off() -> Result<(), AkonError> {
 
     println!(
         "{} {}",
-        "✓".bright_green(),
+        "[OK]".bright_green().bold(),
         "Disconnect complete".bright_green().bold()
     );
 
@@ -1016,9 +1036,16 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
 
     if !state_path.exists() {
         println!(
-            "{} {}",
+            "{} {} - {}",
             "●".bright_red(),
-            "Status: Not connected".bright_white().bold()
+            "akon-vpn.service".bright_white().bold(),
+            "Akon VPN Connection".bright_white()
+        );
+        println!(
+            "    {} {} ({})",
+            "Active:".bright_white(),
+            "inactive (dead)".bright_red(),
+            "not connected".dimmed()
         );
         std::process::exit(1);
     }
@@ -1044,41 +1071,47 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
     // T053: Check for Error state and suggest manual intervention
     if is_error {
         println!(
-            "{} {}",
+            "{} {} - {}",
             "●".bright_red(),
-            "Status: Error - Max reconnection attempts exceeded"
-                .bright_red()
-                .bold()
+            "akon-vpn.service".bright_white().bold(),
+            "Akon VPN Connection".bright_white()
+        );
+        println!(
+            "    {} {} ({})",
+            "Active:".bright_white(),
+            "failed".bright_red().bold(),
+            "max reconnection attempts exceeded".dimmed()
         );
 
         if let Some(error_msg) = state.get("error").and_then(|e| e.as_str()) {
             println!(
-                "  {} {}",
-                "Last error:".bright_white(),
-                error_msg.bright_yellow()
+                "     {} {}",
+                "Error:".bright_white(),
+                error_msg.bright_red()
             );
         }
 
         if let Some(attempts) = state.get("max_attempts").and_then(|a| a.as_u64()) {
             println!(
-                "  {} Failed after {} reconnection attempts",
-                "❌".bright_red(),
+                "  {} {} attempts",
+                "Retries:".bright_white(),
                 attempts.to_string().bright_yellow()
             );
         }
 
+        println!();
         println!(
-            "\n{} {}",
-            "⚠".bright_yellow(),
+            "{} {}",
+            "[WARN]".bright_yellow(),
             "Manual intervention required:".bright_white().bold()
         );
         println!(
-            "  {} Run {} to disconnect",
+            "         {} Run {} to disconnect",
             "1.".bright_yellow(),
             "akon vpn off".bright_cyan()
         );
         println!(
-            "  {} Run {} to reconnect with reset",
+            "         {} Run {} to reconnect",
             "2.".bright_yellow(),
             "akon vpn on --force".bright_cyan()
         );
@@ -1096,13 +1129,15 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
         let next_retry_at = state.get("next_retry_at").and_then(|n| n.as_u64());
 
         println!(
-            "{} {}",
+            "{} {} - {}",
             "●".bright_yellow(),
-            "Status: Reconnecting".bright_yellow().bold()
+            "akon-vpn.service".bright_white().bold(),
+            "Akon VPN Connection".bright_white()
         );
         println!(
-            "  {} Attempt {} of {}",
-            "🔄".bright_yellow(),
+            "    {} {} (attempt {}/{})",
+            "Active:".bright_white(),
+            "reconnecting".bright_yellow().bold(),
             attempt.to_string().bright_cyan(),
             max_attempts.to_string().bright_cyan()
         );
@@ -1114,16 +1149,16 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
                 .unwrap_or_else(|| "unknown".to_string());
 
             println!(
-                "  {} Next retry at {}",
-                "⏱".dimmed(),
+                "     {} {}",
+                "Retry:".bright_white(),
                 retry_time.bright_cyan()
             );
         }
 
         if let Some(ip) = state.get("last_ip") {
             println!(
-                "  {} {}",
-                "Last known IP:".dimmed(),
+                "   {} {}",
+                "Last IP:".dimmed(),
                 ip.as_str().unwrap_or("unknown").bright_cyan()
             );
         }
@@ -1150,88 +1185,113 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
     if !process_running {
         // Stale state
         println!(
-            "{} {}",
+            "{} {} - {}",
             "●".bright_yellow(),
-            "Status: Stale connection state".bright_yellow().bold()
+            "akon-vpn.service".bright_white().bold(),
+            "Akon VPN Connection".bright_white()
         );
         println!(
-            "  {} {}",
-            "⚠".bright_yellow(),
-            "Process no longer running".dimmed()
+            "    {} {} ({})",
+            "Active:".bright_white(),
+            "inactive (stale)".bright_yellow().bold(),
+            "process no longer running".dimmed()
         );
         if let Some(ip) = state.get("ip") {
             println!(
-                "  {} {}",
-                "Last known IP:".dimmed(),
+                "   {} {}",
+                "Last IP:".dimmed(),
                 ip.as_str().unwrap_or("unknown").bright_cyan()
             );
         }
+        println!();
         println!(
-            "\n{} {} to clean up the stale state",
-            "Run".dimmed(),
-            "akon vpn off".bright_white().bold()
+            "  {} Run {} to clean up stale state",
+            "[TIP]".bright_yellow(),
+            "akon vpn off".bright_cyan()
         );
         std::process::exit(2);
     }
 
     // Connected and process running
+    // Get connected_at timestamp for display
+    let connected_at_info = state
+        .get("connected_at")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<DateTime<Utc>>().ok());
+
+    let duration_str = connected_at_info.map(|connected_at| {
+        let now = Utc::now();
+        let duration = now.signed_duration_since(connected_at);
+        if duration.num_days() > 0 {
+            format!("{} days", duration.num_days())
+        } else if duration.num_hours() > 0 {
+            format!(
+                "{}h {}min",
+                duration.num_hours(),
+                duration.num_minutes() % 60
+            )
+        } else if duration.num_minutes() > 0 {
+            format!(
+                "{}min {}s",
+                duration.num_minutes(),
+                duration.num_seconds() % 60
+            )
+        } else {
+            format!("{}s", duration.num_seconds())
+        }
+    });
+
+    let active_since = connected_at_info
+        .map(|dt| dt.with_timezone(&chrono::Local))
+        .map(|dt| dt.format("%a %Y-%m-%d %H:%M:%S %Z").to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
     println!(
-        "{} {}",
+        "{} {} - {}",
         "●".bright_green(),
-        "Status: Connected".bright_green().bold()
+        "akon-vpn.service".bright_white().bold(),
+        "Akon VPN Connection".bright_white()
     );
-    if let Some(ip) = state.get("ip") {
+
+    // Active line with duration
+    if let Some(dur) = &duration_str {
         println!(
-            "  {} {}",
-            "IP address:".bright_white(),
-            ip.as_str().unwrap_or("unknown").bright_cyan().bold()
+            "    {} {} since {}; {} ago",
+            "Active:".bright_white(),
+            "active (running)".bright_green().bold(),
+            active_since.bright_white(),
+            dur.bright_magenta()
+        );
+    } else {
+        println!(
+            "    {} {}",
+            "Active:".bright_white(),
+            "active (running)".bright_green().bold()
         );
     }
-    if let Some(device) = state.get("device") {
-        println!(
-            "  {} {}",
-            "Device:".bright_white(),
-            device.as_str().unwrap_or("unknown").bright_cyan()
-        );
-    }
+
     if let Some(pid_num) = pid {
         println!(
-            "  {} {}",
-            "Process ID:".bright_white(),
+            "  {} {} (openconnect)",
+            "Main PID:".bright_white(),
             pid_num.to_string().bright_yellow()
         );
     }
 
-    // Calculate and display duration
-    if let Some(connected_at_str) = state.get("connected_at").and_then(|v| v.as_str()) {
-        if let Ok(connected_at) = connected_at_str.parse::<DateTime<Utc>>() {
-            let now = Utc::now();
-            let duration = now.signed_duration_since(connected_at);
+    if let Some(ip) = state.get("ip") {
+        println!(
+            "        {} {}",
+            "IP:".bright_white(),
+            ip.as_str().unwrap_or("unknown").bright_cyan().bold()
+        );
+    }
 
-            let duration_str = if duration.num_days() > 0 {
-                format!("{} days", duration.num_days())
-            } else if duration.num_hours() > 0 {
-                format!("{} hours", duration.num_hours())
-            } else if duration.num_minutes() > 0 {
-                format!("{} minutes", duration.num_minutes())
-            } else {
-                format!("{} seconds", duration.num_seconds())
-            };
-
-            println!(
-                "  {} {}",
-                "Duration:".bright_white(),
-                duration_str.bright_magenta()
-            );
-            println!(
-                "  {} {}",
-                "Connected at:".bright_white(),
-                connected_at
-                    .format("%Y-%m-%d %H:%M:%S UTC")
-                    .to_string()
-                    .dimmed()
-            );
-        }
+    if let Some(device) = state.get("device") {
+        println!(
+            "    {} {}",
+            "Device:".bright_white(),
+            device.as_str().unwrap_or("unknown").bright_cyan()
+        );
     }
 
     Ok(())
