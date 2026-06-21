@@ -31,13 +31,14 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-Verify compliance with Auto-OpenConnect Constitution v1.0.0:
+Verify compliance with Auto-OpenConnect Constitution v1.1.0:
 
 - [ ] **Security-First**: Are credentials stored only in GNOME Keyring? No plaintext secrets in code/config/logs?
 - [ ] **Modular Architecture**: Is functionality decomposed into independent modules with clear boundaries?
 - [ ] **Test-Driven Development**: Are tests written before implementation? Security modules >90% coverage?
 - [ ] **Observability**: Are all state changes logged to systemd journal? No secrets in logs?
 - [ ] **CLI-First Interface**: Is functionality accessible via CLI with composable outputs?
+- [ ] **Test Actors & Seam-Isolated Testing**: Are heavy/real integrations (OS, network, TLS, processes, root, time) behind a seam (trait) with an in-memory actor as ground truth? Is behavior tested offline, deterministically, and hang-proof (bounded waits, EOF-on-close/drop)? For any replacement of a real integration, is there a bounded real end-to-end test on the production seam? Is test-only code gated out of release builds?
 
 **Security-Critical Changes** (require extra scrutiny):
 - [ ] OAuth token handling

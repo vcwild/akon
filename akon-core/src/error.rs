@@ -99,23 +99,11 @@ pub enum VpnError {
     #[error("Network error: {reason}")]
     NetworkError { reason: String },
 
-    #[error("OpenConnect library error: {code}")]
-    OpenConnectError { code: i32 },
-
     #[error("Invalid connection state transition")]
     InvalidStateTransition,
 
-    #[error("Failed to spawn OpenConnect process: {reason}")]
-    ProcessSpawnError { reason: String },
-
     #[error("Connection timeout after {seconds} seconds")]
     ConnectionTimeout { seconds: u64 },
-
-    #[error("Failed to terminate OpenConnect process")]
-    TerminationError,
-
-    #[error("Failed to parse OpenConnect output: {line}")]
-    ParseError { line: String },
 }
 
 /// OTP/TOTP operation errors

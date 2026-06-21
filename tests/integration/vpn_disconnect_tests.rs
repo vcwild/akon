@@ -1,7 +1,9 @@
-// Integration tests for VPN disconnect functionality
+// Integration tests for VPN disconnect functionality (native F5 backend).
 //
-// These tests verify the disconnect logic, state management, and error handling
-// Note: Tests requiring actual OpenConnect processes should be run with proper setup
+// These tests verify the disconnect logic, state-file management, and error
+// handling. The native backend records `backend: "native-f5"` and a
+// `teardown_plan` in the state file, which `akon vpn off` replays to restore the
+// host. These tests focus on the backend-agnostic state-file handling.
 
 use std::fs;
 use std::path::PathBuf;
@@ -37,12 +39,21 @@ fn test_state_file_format() {
     let state_path = state_file_path();
     cleanup_test_state(&state_path);
     
-    // Create a mock state file with expected fields
+    // Create a mock state file matching the NATIVE backend's shape, incl. the
+    // backend tag and the host-teardown plan that `vpn off` replays.
     let state = serde_json::json!({
         "ip": "10.0.1.100",
         "device": "tun0",
         "connected_at": "2024-01-01T12:00:00Z",
         "pid": 12345,
+        "backend": "native-f5",
+        "server": "vpn.example.com",
+        "teardown_plan": {
+            "device": "tun0",
+            "extra_routes": ["98.0.0.1/32"],
+            "rp_filter_restore": [["net.ipv4.conf.all.rp_filter", "1"]],
+            "dns_iface": "tun0"
+        }
     });
     
     let state_json = serde_json::to_string_pretty(&state).unwrap();
@@ -55,6 +66,8 @@ fn test_state_file_format() {
     assert_eq!(parsed.get("ip").unwrap().as_str().unwrap(), "10.0.1.100");
     assert_eq!(parsed.get("device").unwrap().as_str().unwrap(), "tun0");
     assert_eq!(parsed.get("pid").unwrap().as_u64().unwrap(), 12345);
+    assert_eq!(parsed.get("backend").unwrap().as_str().unwrap(), "native-f5");
+    assert!(parsed.get("teardown_plan").is_some(), "native state has a teardown_plan");
     
     cleanup_test_state(&state_path);
 }

@@ -1,0 +1,21 @@
+# Fedora client image: runs the native F5 client (f5_test_client) to validate
+# the backend + DNS application against Fedora userland.
+# Build context = repository root.
+
+FROM docker.io/library/rust:1-bookworm AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends libdbus-1-dev pkg-config && rm -rf /var/lib/apt/lists/*
+COPY Cargo.toml Cargo.lock ./
+COPY akon-core ./akon-core
+COPY src ./src
+RUN cargo build -p akon-core --features test-actors --bin f5_test_client --release
+
+FROM registry.fedoraproject.org/fedora:40
+# Real Fedora resolver tooling (`resolvectl`) + runtime dbus lib (keyring link).
+RUN dnf -y install systemd-resolved iproute dbus-libs && dnf clean all || true
+COPY --from=builder /build/target/release/f5_test_client /usr/local/bin/f5_test_client
+ENV AKON_F5_HOST=f5server \
+    AKON_F5_PORT=8443 \
+    AKON_F5_CA=/certs/server.pem \
+    AKON_DNS_IFACE=lo
+ENTRYPOINT ["/usr/local/bin/f5_test_client"]

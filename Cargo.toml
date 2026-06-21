@@ -4,15 +4,15 @@ resolver = "2"
 
 [package]
 name = "akon"
-version = "1.2.3"
+version = "2.0.0"
 edition = "2021"
 authors = ["vcwild"]
-description = "A CLI tool for managing VPN connections with OpenConnect"
+description = "A native, dependency-free CLI tool for managing F5 BIG-IP SSL VPN connections"
 license = "MIT"
 repository = "https://github.com/vcwild/akon"
 homepage = "https://github.com/vcwild/akon"
 readme = "README.md"
-keywords = ["vpn", "openconnect", "cli", "networking"]
+keywords = ["vpn", "f5", "bigip", "cli", "networking"]
 categories = ["command-line-utilities", "network-programming"]
 
 [lints.rust]
@@ -24,10 +24,10 @@ maintainer = "vcwild"
 copyright = "2025, vcwild"
 license-file = ["LICENSE", "4"]
 extended-description = """\
-akon is a command-line tool for managing VPN connections using OpenConnect.
-It provides an easy-to-use interface for connecting to VPN servers with support
-for automatic reconnection, health checks, and daemon mode operation."""
-depends = "openconnect, procps"
+akon is a native, in-process command-line F5 BIG-IP SSL VPN client (pure Rust,
+no openconnect). It connects, configures the tunnel via netlink, and supports
+automatic reconnection and health checks. It runs as the user; only TUN/route
+setup needs CAP_NET_ADMIN (granted via `setcap cap_net_admin+ep`)."""
 section = "net"
 priority = "optional"
 assets = [
@@ -48,10 +48,6 @@ post_install_script = "rpm/post-install.sh"
 pre_uninstall_script = "rpm/pre-uninstall.sh"
 post_uninstall_script = "rpm/post-uninstall.sh"
 
-[package.metadata.generate-rpm.requires]
-openconnect = "*"
-procps-ng = "*"
-
 [[bin]]
 name = "akon"
 path = "src/main.rs"
@@ -61,14 +57,12 @@ path = "src/main.rs"
 clap.workspace = true
 tracing.workspace = true
 tracing-journald.workspace = true
-daemonize.workspace = true
 nix.workspace = true
 serde_json.workspace = true
 libc.workspace = true
 serde.workspace = true
 tokio.workspace = true
 # Additional dependencies
-which = "6.0"
 chrono = "0.4"
 colored = "2.1"
 # Local crate
@@ -94,9 +88,6 @@ totp-lite = "2.0"
 base32 = "0.4"
 keyring = { version = "3.6", features = ["sync-secret-service"] }
 
-# Build and FFI
-bindgen = "0.69"
-daemonize = "0.5"
 nix = { version = "0.27", features = ["signal", "process", "user"] }
 serde_json = "1.0"
 libc = "0.2"

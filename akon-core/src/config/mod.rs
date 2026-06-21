@@ -8,7 +8,9 @@ pub mod toml_config;
 
 /// VPN protocol type
 ///
-/// Supported VPN protocols for OpenConnect
+/// VPN protocol identifier. akon's native client implements **F5** (the
+/// default); the other variants are recognized in config for forward
+/// compatibility but are not currently supported by the native backend.
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VpnProtocol {
@@ -30,7 +32,7 @@ pub enum VpnProtocol {
 }
 
 impl VpnProtocol {
-    /// Get the protocol name as expected by OpenConnect
+    /// Get the lowercase protocol identifier (e.g. `"f5"`).
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::AnyConnect => "anyconnect",
@@ -56,7 +58,7 @@ pub struct VpnConfig {
     /// Username for VPN authentication
     pub username: String,
 
-    /// VPN protocol to use (default: AnyConnect)
+    /// VPN protocol to use (default: F5)
     #[serde(default)]
     pub protocol: VpnProtocol,
 

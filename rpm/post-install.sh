@@ -1,53 +1,34 @@
 #!/bin/sh
-# RPM post-installation script for akon
-# Configures passwordless sudo for required commands
+# RPM post-installation script for akon.
+#
+# akon is now a native, in-process F5 VPN client (no openconnect). It runs as
+# the user so the keyring stays accessible; the only privilege it needs is
+# CAP_NET_ADMIN to create the TUN device and configure routes via netlink. We
+# grant that with a file capability on the binary — NO passwordless sudo, NO
+# openconnect.
 
-# Find command paths
-OPENCONNECT_PATH=$(command -v openconnect 2>/dev/null || echo "")
-PKILL_PATH=$(command -v pkill 2>/dev/null || echo "")
-KILL_PATH=$(command -v kill 2>/dev/null || echo "/usr/bin/kill")
+AKON_PATH=$(command -v akon 2>/dev/null || echo "/usr/bin/akon")
 
-# Verify paths exist
-if [ -z "$OPENCONNECT_PATH" ]; then
-    echo "Warning: openconnect not found. Please install it: sudo dnf install openconnect"
-    OPENCONNECT_PATH="/usr/sbin/openconnect"
+# Remove the legacy passwordless-sudo file from older akon versions.
+if [ -f /etc/sudoers.d/akon ]; then
+    rm -f /etc/sudoers.d/akon
+    echo "Removed legacy /etc/sudoers.d/akon (no longer needed)."
 fi
 
-if [ -z "$PKILL_PATH" ]; then
-    PKILL_PATH="/usr/bin/pkill"
-fi
-
-if [ ! -f "$KILL_PATH" ]; then
-    KILL_PATH="/usr/bin/kill"
-fi
-
-# Create sudoers.d file for akon
-SUDOERS_FILE="/etc/sudoers.d/akon"
-
-cat > "$SUDOERS_FILE" << EOF
-# Allow all users to run akon-required commands without password
-# This file is automatically managed by the akon package
-ALL ALL=(ALL) NOPASSWD: $OPENCONNECT_PATH *
-ALL ALL=(ALL) NOPASSWD: $PKILL_PATH *
-ALL ALL=(ALL) NOPASSWD: $KILL_PATH *
-EOF
-
-# Set proper permissions on sudoers file
-chmod 0440 "$SUDOERS_FILE"
-
-# Verify the sudoers file syntax
-if ! visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-    echo "Warning: sudoers file has syntax errors. Please check /etc/sudoers.d/akon"
-    rm -f "$SUDOERS_FILE"
-    exit 1
+# Grant CAP_NET_ADMIN to the akon binary so it can manage the TUN/routes rootless.
+if command -v setcap >/dev/null 2>&1; then
+    if setcap cap_net_admin+ep "$AKON_PATH" 2>/dev/null; then
+        echo "Granted cap_net_admin to $AKON_PATH (run akon as your user, no sudo)."
+    else
+        echo "Warning: could not set cap_net_admin on $AKON_PATH."
+        echo "  Grant it manually: sudo setcap cap_net_admin+ep $AKON_PATH"
+    fi
+else
+    echo "Note: 'setcap' (libcap) not found. Install it, then run:"
+    echo "  sudo setcap cap_net_admin+ep $AKON_PATH"
 fi
 
 echo "akon has been installed successfully!"
-echo "The following commands are now available without sudo password:"
-echo "  - openconnect ($OPENCONNECT_PATH)"
-echo "  - pkill ($PKILL_PATH)"
-echo "  - kill ($KILL_PATH)"
-echo ""
-echo "Run 'akon --help' to get started."
+echo "Run 'akon setup' to configure your credentials, then 'akon vpn on'."
 
 exit 0

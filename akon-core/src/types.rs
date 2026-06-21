@@ -140,8 +140,8 @@ impl VpnPassword {
 
     /// Expose the password value (use with caution!)
     ///
-    /// This should only be called when passing to OpenConnect or
-    /// outputting to stdout for the get-password command.
+    /// This should only be called when submitting it to the VPN backend during
+    /// authentication, or outputting to stdout for the get-password command.
     pub fn expose(&self) -> &str {
         self.0.expose_secret()
     }

@@ -1,14 +1,24 @@
 # CI Pipeline for akon
-# Validates code quality, runs tests, and verifies builds on every push and pull request
+# Validates code quality, runs tests, and verifies builds on every push and PR.
+#
+# Test strategy (must match the runtime: a GitHub runner has NO root TUN access,
+# NO netlink privileges, NO production F5 appliance, and NO GNOME Keyring daemon):
+#  - We run the PURE protocol layers + the OFFLINE native e2e/equivalence/
+#    dataplane suites (built with `--features test-actors`, driven by the
+#    in-memory test actors + a loopback TLS server — no root, no network egress).
+#  - The privileged/online suites SELF-SKIP here: the real-TUN, netns, podman,
+#    and production sign-off tests gate on env flags / capabilities / podman and
+#    return early when those are absent.
+#  - The real GNOME-Keyring tests self-skip when no secret-service daemon is
+#    present (the case on CI); keyring logic is covered deterministically by the
+#    dedicated `mock-keyring` job below.
 name: CI
 
-# Trigger on pull requests
 on:
   pull_request:
 
 jobs:
-  # User Story 1: Code Quality Validation
-  # Validates code formatting and linting rules
+  # Code quality: formatting + clippy (lint the gated test code too).
   lint:
     name: Lint (rustfmt + clippy)
     runs-on: ubuntu-latest
@@ -28,15 +38,14 @@ jobs:
       - name: Check code formatting
         run: cargo fmt --all --check
 
-      - name: Run clippy linter
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Run clippy linter (incl. test-actors test code)
+        run: cargo clippy --workspace --all-targets --features test-actors -- -D warnings
 
-  # User Story 2: Automated Test Execution
-  # Runs all unit and integration tests across workspace
+  # Automated tests: pure layers + offline native suites. Privileged/online and
+  # real-keyring tests self-skip on the runner (see strategy note above).
   test:
     name: Test
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       matrix:
         rust: [stable]
@@ -54,11 +63,10 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
 
-      - name: Run tests
-        run: cargo test --workspace --verbose
+      - name: Run tests (pure + offline native, test-actors enabled)
+        run: cargo test --workspace --features test-actors --verbose
 
-  # User Story 2b: Run feature-gated integration test using mock-keyring
-  # This job runs the integration test that depends on the `mock-keyring` feature.
+  # Keyring logic, deterministically, via the in-memory mock-keyring backend.
   mock-keyring-test:
     name: Test (mock-keyring integration)
     runs-on: ubuntu-latest
@@ -78,11 +86,9 @@ jobs:
           toolchain: ${{ matrix.rust }}
 
       - name: Run mock-keyring integration test
-        # Run only the integration test that is gated by the `mock-keyring` feature
         run: cargo test -p akon-core --test integration_keyring_tests --features mock-keyring -- --nocapture
 
-  # User Story 3: Build Verification
-  # Verifies successful compilation in release mode
+  # Build verification (release; test-only code is gated out).
   build:
     name: Build (release)
     runs-on: ubuntu-latest

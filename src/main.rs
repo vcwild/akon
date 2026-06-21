@@ -7,7 +7,6 @@ use akon_core::{error::AkonError, init_logging};
 use clap::{Parser, Subcommand};
 
 mod cli;
-mod daemon;
 
 #[derive(Parser)]
 #[command(name = "akon")]
@@ -91,14 +90,6 @@ enum VpnCommands {
 
 #[tokio::main]
 async fn main() {
-    // Check if this is an internal daemon invocation (before parsing CLI)
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() >= 4 && args[1] == "__internal_reconnection_daemon" {
-        // This is a daemon process invocation
-        handle_daemon_invocation(args).await;
-        return;
-    }
-
     // Initialize logging
     if let Err(e) = init_logging() {
         eprintln!("Failed to initialize logging: {}", e);
@@ -153,11 +144,7 @@ async fn main() {
                     akon_core::error::VpnError::AuthenticationFailed => 1,
                     akon_core::error::VpnError::NetworkError { .. } => 1,
                     akon_core::error::VpnError::InvalidStateTransition => 1,
-                    akon_core::error::VpnError::OpenConnectError { .. } => 1,
-                    akon_core::error::VpnError::ProcessSpawnError { .. } => 1,
                     akon_core::error::VpnError::ConnectionTimeout { .. } => 1,
-                    akon_core::error::VpnError::TerminationError => 1,
-                    akon_core::error::VpnError::ParseError { .. } => 1,
                 },
                 // OTP errors (exit code 2 - configuration/setup)
                 AkonError::Otp(_) => 2,
@@ -168,42 +155,5 @@ async fn main() {
             eprintln!("{}", e);
             std::process::exit(exit_code);
         }
-    }
-}
-
-/// Handle internal daemon invocation
-/// This function is called when the process is spawned as a daemon
-async fn handle_daemon_invocation(args: Vec<String>) {
-    // Initialize logging for daemon
-    if let Err(e) = init_logging() {
-        eprintln!("Daemon: Failed to initialize logging: {}", e);
-        std::process::exit(2);
-    }
-
-    // Parse policy and config from arguments
-    let policy_json = &args[2];
-    let config_json = &args[3];
-
-    let policy: akon_core::vpn::reconnection::ReconnectionPolicy =
-        match serde_json::from_str(policy_json) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Daemon: Failed to parse reconnection policy: {}", e);
-                std::process::exit(2);
-            }
-        };
-
-    let config: akon_core::config::VpnConfig = match serde_json::from_str(config_json) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Daemon: Failed to parse VPN config: {}", e);
-            std::process::exit(2);
-        }
-    };
-
-    // Run the reconnection manager
-    if let Err(e) = cli::vpn::run_reconnection_manager_daemon(policy, config).await {
-        eprintln!("Daemon: Reconnection manager error: {}", e);
-        std::process::exit(1);
     }
 }
