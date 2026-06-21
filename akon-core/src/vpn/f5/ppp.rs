@@ -683,15 +683,13 @@ impl PppNegotiator {
                     out.push(self.send_ipcp_request());
                 }
             }
-            CONFACK => {
-                if pkt.id == self.ipcp_req_id {
-                    self.ipcp_ack_received = true;
-                    // Record the IP we ended up requesting as negotiated.
-                    if self.negotiated_ip.is_none() {
-                        self.negotiated_ip = Some(self.requested_ip);
-                    }
-                    self.maybe_network_up();
+            CONFACK if pkt.id == self.ipcp_req_id => {
+                self.ipcp_ack_received = true;
+                // Record the IP we ended up requesting as negotiated.
+                if self.negotiated_ip.is_none() {
+                    self.negotiated_ip = Some(self.requested_ip);
                 }
+                self.maybe_network_up();
             }
             _ => {}
         }
