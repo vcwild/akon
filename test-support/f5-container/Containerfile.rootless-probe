@@ -1,0 +1,41 @@
+# Rootless data-plane validation image.
+#
+# Builds the `f5_dataplane_probe` binary, grants it the `cap_net_admin+ep` FILE
+# CAPABILITY, and runs it as a NON-ROOT user (no sudo). This proves the native
+# F5 data plane (TUN + in-process netlink address/route configuration) works
+# rootless — the openconnect feature-parity goal — in COMPLETE container
+# isolation, with zero effect on the host. See ADR 0001.
+#
+# Build context = repository root.
+
+FROM docker.io/library/rust:1-bookworm AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends libdbus-1-dev pkg-config && rm -rf /var/lib/apt/lists/*
+COPY Cargo.toml Cargo.lock ./
+COPY akon-core ./akon-core
+COPY src ./src
+RUN cargo build -p akon-core --features test-actors --bin f5_dataplane_probe --release
+
+FROM docker.io/library/debian:bookworm-slim
+# `libcap2-bin` provides setcap; `iproute2` is used only by the probe's
+# teardown VERIFICATION (read-only `ip link/route show`), not by akon itself.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libcap2-bin libdbus-1-3 iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/f5_dataplane_probe /usr/local/bin/f5_dataplane_probe
+
+# Grant the file capability and create an unprivileged user to run as.
+RUN setcap cap_net_admin+ep /usr/local/bin/f5_dataplane_probe \
+    && useradd --create-home --shell /usr/sbin/nologin akon
+
+# The probe requires this token (it refuses to run otherwise); the container IS
+# the isolation boundary here, so we set it.
+ENV AKON_PROBE_ISOLATED=1 \
+    AKON_F5_DEBUG=1
+
+# Run as the NON-ROOT user. With the file capability + the container's NET_ADMIN
+# in its user namespace, the probe can create the TUN and configure routes via
+# netlink WITHOUT being root and WITHOUT sudo.
+USER akon
+ENTRYPOINT ["/usr/local/bin/f5_dataplane_probe"]

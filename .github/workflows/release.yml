@@ -59,9 +59,9 @@ jobs:
             curl \
             rpm-build \
             rpmdevtools
-          # Install runtime dependencies (openconnect + dbus)
+          # Install build dependencies (dbus + setcap)
           dnf install -y \
-            openconnect \
+            libcap \
             dbus-devel \
             pkgconf-pkg-config
 
@@ -187,9 +187,9 @@ jobs:
             curl \
             rpm-build \
             rpmdevtools
-          # Install runtime dependencies (openconnect + dbus)
+          # Install build dependencies (dbus + setcap)
           dnf install -y \
-            openconnect \
+            libcap \
             dbus-devel \
             pkgconf-pkg-config
 

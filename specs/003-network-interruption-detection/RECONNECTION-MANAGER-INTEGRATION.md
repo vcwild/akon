@@ -53,7 +53,7 @@ $ ./target/release/akon vpn on
 
 $ ./target/release/akon vpn status
 ● Status: Connected
-  IP address: 10.10.60.169
+  IP address: 10.20.30.40
   Device: tun
   Process ID: 1637963
   Duration: 34 seconds
@@ -68,10 +68,10 @@ $ ./target/release/akon vpn status
 ### Log Verification
 ```bash
 $ journalctl --user -t akon --since "5 minutes ago" | tail -3
-Nov 05 00:21:02 dev-vicwil akon[1643918]: Starting reconnection manager with policy:
+Nov 05 00:21:02 dev-host akon[1643918]: Starting reconnection manager with policy:
     max_attempts=5, health_endpoint=https://google.com/
-Nov 05 00:21:02 dev-vicwil akon[1643918]: Reconnection manager spawned in background
-Nov 05 00:21:02 dev-vicwil akon[1643918]: Initializing reconnection manager with health checks
+Nov 05 00:21:02 dev-host akon[1643918]: Reconnection manager spawned in background
+Nov 05 00:21:02 dev-host akon[1643918]: Initializing reconnection manager with health checks
 ```
 
 **Result**: ✅ **PASSED**

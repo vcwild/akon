@@ -14,12 +14,19 @@ A CLI for managing VPN connections with automatic TOTP (Time-based One-Time Pass
 
 ## Features
 
+- **Native F5 VPN client**: a pure-Rust, in-process F5 BIG-IP SSL VPN
+  implementation (PPP-over-HTTPS). **No `openconnect`, no `sudo`-spawned child.**
+- **Rootless**: runs as your user (keyring intact); the only privilege needed is
+  `CAP_NET_ADMIN` for the TUN device + route setup, granted via a file capability
+  (`setcap cap_net_admin+ep`). TUN/address/route configuration is done in-process
+  via **netlink**.
 - **Secure Credential Management**: Stores PIN and TOTP secret securely in GNOME Keyring
 - **Automatic OTP Generation**: Generates TOTP tokens automatically during connection
-- **OpenConnect Integration**: Uses OpenConnect CLI for robust VPN connectivity (F5 protocol support)
-- **Automatic Reconnection**: Detects network interruptions and reconnects with exponential backoff
+- **Automatic Reconnection**: Detects network interruptions and reconnects with exponential backoff (supervised in-process)
+- **Guaranteed host restore**: `akon vpn off` reconciles every networking change
+  (tun, routes, rp_filter, DNS) from a persisted plan — even after a crash.
 - **Health Monitoring**: Periodic health checks detect silent VPN failures
-- **Fast & Lightweight**: written in Rust and with minimal dependencies
+- **Fast & Lightweight**: written in Rust, dependency-light (no external VPN binary)
 
 ## Table of Contents
 
@@ -34,19 +41,21 @@ A CLI for managing VPN connections with automatic TOTP (Time-based One-Time Pass
 
 ## Requirements
 
-- **Operating System**: Linux (tested on Ubuntu/Debian, RHEL/Fedora)
-- **OpenConnect**: Version 9.x or later
+- **Operating System**: Linux (tested on Ubuntu/Debian, RHEL/Fedora). The VPN
+  data plane is Linux-only (TUN + netlink).
+- **`CAP_NET_ADMIN`**: needed to create the TUN device and configure routes.
+  Granted once as a **file capability** on the binary (no sudo at runtime):
 
   ```bash
-  # Ubuntu/Debian
-  sudo apt install openconnect
-
-  # RHEL/Fedora
-  sudo dnf install openconnect
-
-  # Verify installation
-  which openconnect
+  sudo setcap cap_net_admin+ep "$(command -v akon)"
+  # Requires libcap's setcap:
+  #   Ubuntu/Debian: sudo apt install libcap2-bin
+  #   RHEL/Fedora:   sudo dnf install libcap
   ```
+
+  > Note: file capabilities do not elevate inside a user namespace
+  > (rootless-container dev environments) — those still need `sudo`/`--cap-add
+  > NET_ADMIN`. Normal bare-metal hosts get true rootless operation.
 
 - **GNOME Keyring**: For secure credential storage
 
@@ -54,7 +63,8 @@ A CLI for managing VPN connections with automatic TOTP (Time-based One-Time Pass
   sudo apt install gnome-keyring libsecret-1-dev
   ```
 
-- **Root Privileges**: Required for TUN device creation (run with `sudo`)
+- **No `openconnect`**: akon is a self-contained native client and does **not**
+  use or require the `openconnect` binary.
 
 ## Installation
 
@@ -86,7 +96,7 @@ sudo dnf install ./akon-latest-1.x86_64.rpm
 git clone https://github.com/vcwild/akon.git
 cd akon
 
-# Build and install (sets up passwordless sudo for openconnect)
+# Build and install (grants the CAP_NET_ADMIN file capability)
 make install
 
 # Verify installation
@@ -97,8 +107,8 @@ akon --help
 
 - Builds the release binary
 - Installs to `/usr/local/bin/akon`
-- Configures passwordless sudo for openconnect
-- No password prompts when connecting to VPN!
+- Grants `cap_net_admin+ep` on the binary (so akon runs rootless, as your user)
+- Removes any legacy passwordless-sudo config from older akon versions
 
 ## Quick Start
 
@@ -128,14 +138,15 @@ These credentials are stored in:
 akon vpn on
 ```
 
-**What happens:**
+**What happens (all in-process — `akon` *is* the VPN client):**
 
 1. Loads config from `~/.config/akon/config.toml`
 2. Retrieves PIN and TOTP secret from keyring
 3. Generates current TOTP token
-4. Spawns OpenConnect with credentials
-5. Monitors connection progress
-6. Reports IP address when connected
+4. Connects natively over TLS (auth → config → PPP), configures the TUN device
+   and routes via netlink
+5. Carries the data plane and supervises health/reconnection in-process
+6. Reports IP address when connected (stays running until Ctrl-C or `akon vpn off`)
 
 ### 3. Check Status
 
@@ -157,8 +168,10 @@ akon vpn off
 
 **Disconnect flow:**
 
-1. Sends SIGTERM for graceful shutdown (5s timeout)
-2. Falls back to SIGKILL if process doesn't respond
+1. Signals the running akon VPN process to stop (it drops the TUN and reverts in-process)
+2. Replays the persisted host-teardown plan to reconcile the host (removes the
+   tun, the VPN-server pin route, restores `rp_filter`, reverts DNS) — idempotent
+   and works even if the process was already killed
 3. Cleans up state file
 
 ### 5. Manual OTP Generation
@@ -206,6 +219,93 @@ akon  # Shows usage information
 
 This feature is perfect for quick VPN connections - just type `akon` and go!
 
+### Native F5 backend (the only backend)
+
+akon is a **native, in-process F5 BIG-IP SSL VPN client** — there is no
+`openconnect` and no `native_backend` flag (the native path is always used for
+`protocol = "f5"`). It performs the full handshake over TLS
+(auth → XML config → `/myvpn` tunnel upgrade → PPP LCP/IPCP), configures the TUN
+device and routes **in-process via netlink**, applies DNS on `systemd-resolved`
+systems (Fedora/Ubuntu, with `resolvconf`/`resolv.conf` fallbacks), and
+supervises health/reconnection in-process (honoring the `[reconnection]`
+settings). It runs as your user with a `cap_net_admin+ep` file capability — no
+`sudo`. It is Linux-only.
+
+> Migrating from an older akon? Drop any `native_backend = ...` line from your
+> config (it is ignored now), ensure the binary has the capability
+> (`sudo setcap cap_net_admin+ep "$(command -v akon)"`, or just re-run
+> `make install`), and stop installing `openconnect`.
+
+#### Verifying against your own server (production sign-off)
+
+A deliberate, opt-in sign-off test (`tests/production_signoff_test.rs`) connects
+the native backend to **your own** configured F5 server using **your** local
+config and keyring credentials, reaches `Connected`, and disconnects
+immediately. No server, username, or network is hardcoded in akon — it reads
+everything from `~/.config/akon/config.toml` and the keyring at run time. It
+creates no TUN device and changes no routes/DNS, so it does not disrupt your
+connectivity. It is disabled by default and requires an explicit double opt-in:
+
+```bash
+AKON_SIGNOFF_PRODUCTION=1 \
+AKON_SIGNOFF_ACK=I_UNDERSTAND_THIS_HITS_PRODUCTION \
+cargo test --test production_signoff_test -- --nocapture
+```
+
+The control-plane sign-off above has been validated against a real production F5
+appliance (authenticated with PIN+OTP, completed the full handshake + PPP to
+network-up, assigned a tunnel IP, disconnected cleanly).
+
+#### Data-plane sign-off (proves traffic actually flows)
+
+A second, deeper gate (`tests/production_dataplane_signoff_test.rs`) opens a
+**real TUN device**, connects to your appliance, then routes **one** target you
+specify (`AKON_SOAK_PROBE_TARGET`, a host reachable only via the VPN) through the
+tunnel as a `/32` route and verifies it becomes reachable — proving user traffic
+traverses the native data plane. It **never installs a default route** (so it
+cannot hijack your connectivity), removes the route and tears down the TUN on
+every exit (including failures), and is bounded. It needs root (`CAP_NET_ADMIN`)
+and is triple-gated:
+
+Use the helper, which builds as your user, generates the PIN+OTP as your user
+(`akon get-password`), then runs the test binary, passing the password via
+`AKON_SOAK_PASSWORD` (never printed):
+
+```bash
+AKON_SOAK_PROBE_TARGET=intranet.example.com ./test-support/run-dataplane-signoff.sh
+```
+
+> Rootless runtime is fully implemented: with `setcap cap_net_admin+ep` on the
+> binary, akon configures the TUN and routes in-process via netlink as your user
+> — no `sudo`. The containerized proof is `test-support/run-rootless-validation.sh`
+> (runs the data plane as a non-root user inside a container). The soak still
+> uses elevation only where your environment requires it for `/dev/net/tun`.
+
+The probe target may be **VPN-only**: if its name doesn't resolve before the
+tunnel is up, the soak routes the negotiated VPN DNS server through the tunnel
+and resolves the name **through the tunnel** (which itself proves the data plane
+carries traffic). You can also pass an **IP literal**
+(`AKON_SOAK_PROBE_TARGET=10.10.x.y:443`) to skip DNS entirely. The whole soak is
+bounded by a hard 30s deadline and tears down the TUN + all routes on every exit.
+
+The probe target accepts a bare host, `host:port`, or a full URL (port defaults
+to 443). Equivalent manual form (build first, then sudo the binary):
+
+```bash
+BIN=$(cargo test --test production_dataplane_signoff_test --no-run \
+  --message-format=json | sed -n 's/.*"executable":"\([^"]*production_dataplane_signoff_test[^"]*\)".*/\1/p' | tail -1)
+sudo -E AKON_F5_DEBUG=1 \
+  AKON_SIGNOFF_PRODUCTION=1 \
+  AKON_SIGNOFF_ACK=I_UNDERSTAND_THIS_HITS_PRODUCTION \
+  AKON_SOAK_PROBE_TARGET=intranet.example.com \
+  "$BIN" --nocapture
+```
+
+The route/teardown mechanics are rehearsed locally on a real TUN by the gated
+test `native_f5_real_tun_tests` (`sudo -E AKON_RUN_TUN_TESTS=1 cargo test
+-p akon-core --features test-actors --test native_f5_real_tun_tests`), so the
+production run only adds the live appliance.
+
 ### Automatic Reconnection
 
 akon automatically detects network interruptions and reconnects your VPN with intelligent retry logic.
@@ -243,14 +343,24 @@ The name "akon" is a playful triple entendre:
 
 ## Architecture
 
-akon uses a **CLI process delegation** architecture:
+akon is a **native, in-process F5 VPN client** (no external process):
 
-- Spawns OpenConnect as a child process
-- Manages process lifecycle (spawn → monitor → terminate)
-- Parses output in real-time for connection events
-- Provides clean async API using Tokio
+- Connects to the F5 appliance over TLS and runs the full protocol in-process
+  (HTTP auth → XML config → `/myvpn` tunnel upgrade → PPP LCP/IPCP), all behind a
+  `Transport` seam.
+- Carries the data plane itself: a bidirectional pump moving IP packets between
+  a real Linux TUN device and the F5/PPP framing.
+- Configures the interface, addresses, and routes **in-process via netlink**
+  (rootless under a `cap_net_admin+ep` file capability); applies DNS via the
+  system resolver.
+- Records every host mutation in a persisted teardown plan so `akon vpn off`
+  always restores the host.
+- Built test-first against an in-memory test-actors framework (the same
+  `VpnBackend` boundary is exercised by a `SimulatedBackend` oracle), with
+  byte-exact protocol vectors and netns/container/production sign-off tests.
 
-This design eliminates FFI complexity while maintaining full OpenConnect functionality.
+This design removes the external `openconnect` dependency, the `sudo`-spawned
+child, and the FFI of earlier versions.
 
 ### How It Works
 
@@ -262,11 +372,11 @@ flowchart TB
     Config --> Keyring[🔐 Retrieve Credentials<br/>GNOME Keyring]
 
     Keyring -->|PIN + TOTP Secret| TOTP[Generate TOTP Token<br/>Time-based OTP]
-    TOTP -->|PIN+OTP| Connector[CLI Connector<br/>Process Manager]
+    TOTP -->|PIN+OTP| Connector[Native F5 Backend<br/>in-process client]
 
-    Connector -->|spawn sudo openconnect| OC[🌐 OpenConnect Process<br/>VPN Tunnel]
+    Connector -->|TLS: auth → config → PPP| OC[🌐 TUN device<br/>netlink routes]
 
-    OC -->|stdout/stderr| Parser[Output Parser<br/>Regex Matching]
+    OC -->|LifecycleEvents| Parser[Data-plane pump<br/>TUN ↔ F5/PPP framing]
     Parser -->|Connection Events| Monitor[Connection Monitor<br/>State Machine]
 
     Monitor -->|Connected Event| State[Update State<br/>/tmp/akon_vpn_state.json]
@@ -284,7 +394,7 @@ flowchart TB
     Monitor -.->|NetworkManager D-Bus| NM[📶 Network Events<br/>WiFi/Ethernet Changes]
     NM -.->|suspend/resume<br/>WiFi change| Reconnect
 
-    Reconnect -->|backoff: 5s→10s→20s→40s→60s| Connector
+    Reconnect -->|backoff: 5s→10s→20s→40s→60s, in-process| Connector
 
     style User fill:#34495e,stroke:#2c3e50,stroke-width:3px,color:#fff
     style CLI fill:#3498db,stroke:#2980b9,stroke-width:3px,color:#fff
@@ -330,11 +440,12 @@ flowchart TB
 1. **[CLI Layer](./src/cli)**: Command handlers for `setup`, `vpn on/off/status`, `get-password`
 2. **[Config Management](./akon-core/src/config)**: TOML configuration with secure credential storage
 3. **[Authentication](./akon-core/src/auth)**: TOTP generation, keyring integration, password assembly
-4. **[VPN Connector](./akon-core/src/vpn/cli_connector.rs)**: OpenConnect process lifecycle management
-5. **[Output Parser](./akon-core/src/vpn/output_parser.rs)**: Real-time parsing of OpenConnect output
-6. **[Health Monitoring](./akon-core/src/vpn/health_check.rs)**: Periodic endpoint checks for silent failures
-7. **[Reconnection Manager](./akon-core/src/vpn/reconnection.rs)**: Exponential backoff retry logic
-8. **[State Management](./akon-core/src/vpn/state.rs)**: Persistent connection state tracking
+4. **[Native F5 backend](./akon-core/src/vpn/f5)**: pure-Rust F5 client — framing, PPP, auth, config, HTTP, TLS transport, and orchestration (`backend.rs`)
+5. **[netlink](./akon-core/src/vpn/f5/netlink.rs)** & **[TUN](./akon-core/src/vpn/f5/tun.rs)**: in-process link/address/route setup and the real TUN device
+6. **[Host teardown](./akon-core/src/vpn/f5/teardown.rs)**: persisted plan + idempotent reconciler used by `vpn off`
+7. **[Health Monitoring](./akon-core/src/vpn/health_check.rs)**: Periodic endpoint checks for silent failures
+8. **[Reconnection](./akon-core/src/vpn/reconnection.rs)**: Exponential backoff retry logic (supervised in-process)
+9. **[State Management](./akon-core/src/vpn/state.rs)**: Persistent connection state tracking
 
 ### Logging
 
@@ -357,9 +468,14 @@ akon/
 │   │   ├── auth/       # OTP, keyring, password generation
 │   │   ├── config/     # TOML configuration
 │   │   ├── vpn/        # VPN connection management
-│   │   │   ├── cli_connector.rs    # OpenConnect process manager
-│   │   │   ├── output_parser.rs    # Output parsing with regex
-│   │   │   └── connection_event.rs # Event types
+│   │   │   ├── backend.rs          # VpnBackend boundary + lifecycle events
+│   │   │   ├── transport.rs        # Transport / TunDevice / DnsApplier seams
+│   │   │   ├── f5/                 # Native F5 backend
+│   │   │   │   ├── backend.rs      # Orchestration (impl VpnBackend)
+│   │   │   │   ├── framing.rs ppp.rs auth.rs config.rs http.rs  # protocol layers
+│   │   │   │   ├── tls_transport.rs netlink.rs tun.rs dns.rs    # real I/O adapters
+│   │   │   │   └── teardown.rs     # host-teardown plan + reconciler
+│   │   │   └── testkit/            # in-memory actors + SimulatedBackend (test-only)
 │   │   └── error.rs    # Error types
 │   └── tests/          # Unit tests
 ├── src/                # CLI application

@@ -1,25 +1,47 @@
 [package]
 edition = "2021"
 name = "akon-core"
-version = "1.2.3"
+version = "2.0.0"
 
 [features]
 default = []
 # Enable the mock keyring implementation and its test-only dependencies
 mock-keyring = ["lazy_static"]
+# Enable the test actors framework (simulated backend + actors). Auto-available
+# under `cfg(test)`; gated out of release builds so it adds no runtime cost.
+test-actors = ["dep:rcgen", "dep:rustls-pemfile"]
 
 [lints.rust]
 dead_code = "deny"
 
+# Standalone F5 test server used by the Podman real-host integration test.
+# Only built with the `test-actors` feature; absent from release builds.
+[[bin]]
+name = "f5_test_server"
+required-features = ["test-actors"]
+
+# Standalone native-F5 client run inside Fedora/Ubuntu containers to validate
+# the backend + distro DNS application. Only built with `test-actors`.
+[[bin]]
+name = "f5_test_client"
+required-features = ["test-actors"]
+
+# Containerized data-plane round-trip probe (reproduces the local-delivery
+# loop with the real LinuxTun). Only built with `test-actors`.
+[[bin]]
+name = "f5_dataplane_probe"
+required-features = ["test-actors"]
+
 [dependencies]
 # Workspace dependencies
 anyhow.workspace = true
+async-trait = "0.1"
 base32.workspace = true
+libc = "0.2"
 chrono = "0.4"
 data-encoding = "2.9.0"
 keyring.workspace = true
 nix.workspace = true
-regex = "1.10"
 secrecy.workspace = true
 serde.workspace = true
 sha1 = "0.10.6"
@@ -38,6 +60,18 @@ reqwest = {version = "0.12", default-features = false, features = ["rustls-tls"]
 url = "2.5"
 zbus = "4.0"
 
+# Native TLS transport for the native F5 backend (real TLS-over-TCP). These are
+# already in the dependency tree via reqwest's rustls-tls; declared directly so
+# the native transport can use them.
+rustls = {version = "0.23", default-features = false, features = ["ring", "std", "tls12"]}
+tokio-rustls = {version = "0.26", default-features = false, features = ["ring", "tls12"]}
+webpki-roots = "1.0"
+
+# Optional: only compiled for the `test-actors` feature (the containerized F5
+# test server binary). Not present in release builds.
+rcgen = {version = "0.13", optional = true}
+rustls-pemfile = {version = "2.0", optional = true}
+
 [dev-dependencies]
 cargo-tarpaulin = "0.27"
 criterion = "0.5"
@@ -47,3 +81,17 @@ serde_json = "1.0"
 tempfile = "3.0"
 tokio-test = "0.4"
 wiremock = "0.6"
+
+# The containerized/real-TLS integration tests require the test-actors feature
+# (which enables rcgen + rustls-pemfile + the in-memory actors).
+[[test]]
+name = "native_f5_real_tls_tests"
+required-features = ["test-actors"]
+
+[[test]]
+name = "native_f5_podman_tests"
+required-features = ["test-actors"]
+
+[[test]]
+name = "native_f5_real_tun_tests"
+required-features = ["test-actors"]

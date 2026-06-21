@@ -33,7 +33,7 @@ sudo /tmp/test_network_interruption.sh
 ```
 $ cat /tmp/network_test.log
 ✓ VPN is already connected
-  IP address: 10.10.62.13
+  IP address: 10.20.30.40
 
 Run akon vpn status to see full status
 ```

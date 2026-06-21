@@ -1,101 +1,60 @@
-// Integration tests for manual recovery commands (T048)
-// User Story 4: Manual Process Cleanup and Reset
-
-// NOTE: These are comprehensive integration tests that require:
-// - Process spawning and management
-// - Full VPN connection setup
-// - State machine integration
-// - IPC/command handling
+// Integration tests for manual recovery flows (native F5 backend).
+// User Story 4: manual recovery after repeated reconnection failures.
+//
+// With the native backend there are NO external openconnect processes to reap:
+// the VPN runs in-process, and recovery is (a) the in-process supervisor giving
+// up after max_attempts, and (b) `akon vpn off`, which replays the persisted
+// HostTeardownPlan to restore host networking (idempotent, works even after a
+// SIGKILL), then `akon vpn on [--force]` to reconnect.
+//
+// These remain #[ignore]d end-to-end aspirations that need a full connection
+// harness; the underlying mechanisms ARE unit/integration tested elsewhere:
+//   - teardown reconciliation: akon-core teardown unit tests +
+//     native_f5_netns_roundtrip_tests (TEARDOWN: ok) + native_f5_podman_tests.
+//   - reaching Error after exhausted attempts: reconnection_tests / health_check.
 
 #[test]
-#[ignore = "Requires full VPN integration and process management"]
+#[ignore = "Requires full native VPN integration harness"]
 fn test_manual_recovery_after_max_attempts_exceeded() {
-    // This integration test validates the complete manual recovery flow:
+    // 1. Establish a native VPN connection (in-process).
+    // 2. Cause repeated health-check failures to exceed max_attempts.
+    // 3. Verify the supervisor reports Error and stops.
+    // 4. Run `akon vpn off`: the HostTeardownPlan reconciler removes the tun,
+    //    server-pin route, restores rp_filter, and reverts DNS.
+    // 5. Run `akon vpn on`: a fresh connection succeeds.
     //
-    // 1. Setup: Establish VPN connection
-    // 2. Trigger: Cause repeated reconnection failures to exceed max_attempts
-    // 3. Verify: System enters Error state
-    // 4. Manual Intervention: Run cleanup command to terminate orphaned processes
-    // 5. Manual Intervention: Run reset command to clear retry counter
-    // 6. Recovery: Verify state transitions from Error → Disconnected
-    // 7. Validation: Trigger new connection attempt and verify it works
-    //
-    // Expected Flow:
-    // Connected → NetworkDown → Reconnecting(1) → Reconnecting(2) → ... →
-    // Reconnecting(5/max) → Error → [cleanup] → [reset] → Disconnected →
-    // [manual connect] → Connected
-
-    // TODO: Implement when VPN connection infrastructure is ready
-    // This requires:
-    // - Mock VPN server or test endpoint
-    // - Process spawning capabilities
-    // - Command/IPC channel to send cleanup and reset commands
-    // - State observation mechanisms
+    // Flow: Connected → unhealthy → Reconnecting(1..max) → Error →
+    //       [vpn off restores host] → [vpn on] → Connected.
 }
 
 #[test]
-#[ignore = "Requires full VPN integration"]
-fn test_cleanup_command_terminates_orphaned_processes() {
-    // This test validates the cleanup command in isolation:
+#[ignore = "Requires full native VPN integration harness"]
+fn test_vpn_off_restores_host_after_failure() {
+    // Validates the native recovery primitive in isolation:
+    // 1. Connect (TUN + full-tunnel routes + VPN DNS applied).
+    // 2. Run `akon vpn off`.
+    // 3. Verify: tun device gone, default route restored, rp_filter restored,
+    //    DNS reverted — even if the supervising process was killed (the plan is
+    //    persisted in the state file and replayed out-of-process).
     //
-    // 1. Setup: Spawn multiple OpenConnect processes manually
-    // 2. Action: Execute `akon vpn cleanup` command
-    // 3. Verify: All OpenConnect processes are terminated
-    // 4. Verify: Command returns count of terminated processes
-    // 5. Verify: Connection state updates to Disconnected
-    //
-    // Edge Cases:
-    // - No processes running (should return 0, no errors)
-    // - Processes owned by different user (should handle permission errors)
-    // - Processes that don't respond to SIGTERM (should SIGKILL after 5s)
-
-    // TODO: Implement when process management API is ready
+    // The mechanics are covered by native_f5_netns_roundtrip_tests
+    // (asserts `TEARDOWN: ok`) and native_f5_podman_tests.
 }
 
 #[test]
-#[ignore = "Requires full VPN integration"]
-fn test_reset_command_clears_error_state() {
-    // This test validates the reset command in isolation:
-    //
-    // 1. Setup: Create ReconnectionManager in Error state (max attempts exceeded)
-    // 2. Action: Execute `akon vpn reset` command
-    // 3. Verify: Retry counter is cleared to 0
-    // 4. Verify: Consecutive failures counter is cleared to 0
-    // 5. Verify: State transitions from Error → Disconnected
-    // 6. Verify: Subsequent connection attempts are allowed
-    //
-    // Prerequisites:
-    // - ReconnectionManager must expose command handling
-    // - IPC channel must be able to send ResetRetries command
-    // - State transitions must be observable
-
-    // TODO: Implement when command handling is integrated
+#[ignore = "Requires full native VPN integration harness"]
+fn test_force_reconnect_disconnects_then_reconnects() {
+    // Validates `akon vpn on --force`:
+    // 1. With an active connection recorded, run `akon vpn on --force`.
+    // 2. Verify it tears down the existing session (vpn off path) first, then
+    //    establishes a new one.
 }
 
 #[test]
-#[ignore = "Requires full VPN integration"]
-fn test_status_command_suggests_manual_intervention() {
-    // This test validates the status command UX when in Error state:
-    //
-    // 1. Setup: Put system in Error state (max attempts exceeded)
-    // 2. Action: Execute `akon vpn status` command
-    // 3. Verify: Output includes Error state information
-    // 4. Verify: Output suggests `akon vpn cleanup` command
-    // 5. Verify: Output suggests `akon vpn reset` command
-    // 6. Verify: Output explains why manual intervention is needed
-    //
-    // Expected Output Example:
-    // ```
-    // Status: Error - Max reconnection attempts exceeded
-    // Last error: Connection refused after 5 attempts
-    //
-    // Manual intervention required:
-    //   1. Run `akon vpn cleanup` to terminate orphaned processes
-    //   2. Run `akon vpn reset` to clear retry counter
-    //   3. Run `akon vpn on` to reconnect
-    // ```
-
-    // TODO: Implement when CLI status command is updated
+#[ignore = "Requires full native VPN integration harness"]
+fn test_status_reports_stale_after_process_gone() {
+    // Validates `akon vpn status` UX:
+    // 1. With a state file whose recorded pid is no longer running,
+    // 2. `akon vpn status` reports "inactive (stale)" and suggests `akon vpn off`
+    //    to clean up — covered by vpn_status integration tests.
 }
-
-

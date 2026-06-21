@@ -1,0 +1,31 @@
+# Containerfile for the F5 test server used by the Podman real-host integration
+# test (native_f5_podman_tests). It compiles the `f5_test_server` binary from
+# the akon-core crate (with the `test-actors` feature) and runs it on TLS.
+#
+# The build context is the repository root.
+
+FROM docker.io/library/rust:1-bookworm AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends libdbus-1-dev pkg-config && rm -rf /var/lib/apt/lists/*
+
+# Copy the whole workspace (the binary depends on akon-core).
+COPY Cargo.toml Cargo.lock ./
+COPY akon-core ./akon-core
+COPY src ./src
+
+# Build only the test server binary with the test-actors feature.
+RUN cargo build -p akon-core --features test-actors --bin f5_test_server --release
+
+FROM docker.io/library/debian:bookworm-slim
+# Runtime dbus lib (akon-core links it via keyring, unused by the test server).
+RUN apt-get update && apt-get install -y --no-install-recommends libdbus-1-3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /build/target/release/f5_test_server /usr/local/bin/f5_test_server
+
+# Cert is written here; mount this as a volume to read it from the host.
+RUN mkdir -p /certs
+ENV AKON_F5_LISTEN=0.0.0.0:8443 \
+    AKON_F5_CERT_OUT=/certs/server.pem
+
+EXPOSE 8443
+ENTRYPOINT ["/usr/local/bin/f5_test_server"]

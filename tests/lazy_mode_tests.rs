@@ -67,11 +67,14 @@ fn test_lazy_mode_enabled_invokes_vpn_on() {
     );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
+    // With the native backend, lazy mode fails on a missing prerequisite —
+    // typically the keyring credentials or the connection itself (never
+    // "openconnect not installed", which no longer exists).
     assert!(
-        stderr.contains("Keyring error")
-            || stderr.contains("OpenConnect is not installed")
-            || stderr.contains("Failed to spawn"),
-        "expected lazy mode failure to surface prerequisite error, stderr: {}",
+        stderr.to_lowercase().contains("keyring")
+            || stderr.contains("Connection failed")
+            || stderr.contains("config"),
+        "expected lazy mode failure to surface a prerequisite error, stderr: {}",
         stderr
     );
 }
