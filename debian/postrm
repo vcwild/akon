@@ -9,6 +9,9 @@ SUDOERS_FILE="/etc/sudoers.d/akon"
 # Remove sudoers file if package is being purged
 if [ "$1" = "purge" ]; then
     rm -f "$SUDOERS_FILE"
+    # The polkit rule is a packaged asset (auto-removed on remove); also remove
+    # it on purge in case it was modified locally.
+    rm -f /usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules
     echo "akon configuration has been removed."
 fi
 

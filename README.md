@@ -57,6 +57,18 @@ A CLI for managing VPN connections with automatic TOTP (Time-based One-Time Pass
   > (rootless-container dev environments) — those still need `sudo`/`--cap-add
   > NET_ADMIN`. Normal bare-metal hosts get true rootless operation.
 
+- **polkit rule (no DNS prompts)**: akon applies the tunnel's DNS via
+  systemd-resolved, which would otherwise prompt for authentication on every
+  connect. akon ships a scoped polkit rule
+  (`/usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules`) so DNS applies
+  **without any password prompt**. It is installed automatically by the deb/rpm
+  packages and by `make install`. From source without `make install`:
+
+  ```bash
+  sudo install -m 644 packaging/polkit/49-akon-resolved-dns.rules \
+      /usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules
+  ```
+
 - **GNOME Keyring**: For secure credential storage
 
   ```bash
