@@ -34,6 +34,7 @@ assets = [
     ["target/release/akon", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/akon/", "644"],
     ["LICENSE", "usr/share/doc/akon/", "644"],
+    ["packaging/polkit/49-akon-resolved-dns.rules", "usr/share/polkit-1/rules.d/", "644"],
 ]
 maintainer-scripts = "debian/"
 
@@ -43,6 +44,7 @@ assets = [
     { source = "target/release/akon", dest = "/usr/bin/akon", mode = "755" },
     { source = "README.md", dest = "/usr/share/doc/akon/README.md", mode = "644" },
     { source = "LICENSE", dest = "/usr/share/doc/akon/LICENSE", mode = "644" },
+    { source = "packaging/polkit/49-akon-resolved-dns.rules", dest = "/usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules", mode = "644" },
 ]
 post_install_script = "rpm/post-install.sh"
 pre_uninstall_script = "rpm/pre-uninstall.sh"

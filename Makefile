@@ -25,9 +25,23 @@ install: all
 	sudo setcap cap_net_admin+ep /usr/local/bin/akon
 	@echo "✓ Granted cap_net_admin+ep to /usr/local/bin/akon"
 	@echo ""
+	@echo "Installing polkit rule so VPN DNS applies without password prompts..."
+	sudo install -d -m 755 /usr/share/polkit-1/rules.d
+	sudo install -m 644 packaging/polkit/49-akon-resolved-dns.rules /usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules
+	@echo "✓ Installed /usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules"
+	@echo ""
 	@echo "Installation complete! Run akon as your normal user (no sudo):"
 	@echo "  akon setup"
 	@echo "  akon vpn on"
+
+# Remove akon, its capability, and the polkit rule.
+.PHONY: uninstall
+uninstall:
+	@echo "Removing akon..."
+	sudo rm -f /usr/local/bin/akon
+	sudo rm -f /usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules
+	sudo rm -f /etc/sudoers.d/akon 2>/dev/null || true
+	@echo "✓ Removed akon, polkit rule, and any legacy sudoers config"
 
 # Install development version for debugging
 install-dev:
