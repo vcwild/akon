@@ -817,11 +817,6 @@ async fn run_data_plane(
     reason
 }
 
-/// How often we send a client-originated PPP keepalive (LCP Echo-Request / DPD).
-/// Must be comfortably below the F5 server's DPD tolerance (observed ~150 s);
-/// 20 s matches openconnect's keepalive range.
-const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(20);
-
 /// Under `AKON_F5_DEBUG`, log a throughput summary every this many packets
 /// (per direction) instead of dumping every packet's bytes — a 20-min soak
 /// produced ~150k per-packet lines (32 MB) that buried the lifecycle/keepalive
@@ -849,39 +844,17 @@ async fn pump_packets(
     let debug = crate::vpn::f5::http::debug_enabled();
     let (mut out_pkts, mut in_pkts) = (0u64, 0u64);
 
-    // Keepalive / DPD timer. The F5 server resets its dead-peer-detection clock
-    // on a *control-plane* LCP Echo-Request, NOT on data traffic: a 20-min soak
-    // with constant outbound packets still dropped at the server's ~149 s DPD
-    // interval. So we send the Echo-Request on every tick unconditionally —
-    // skipping it when data is flowing (as openconnect does) left the keepalive
-    // never firing under real traffic and the tunnel kept dropping.
-    let mut keepalive = tokio::time::interval(KEEPALIVE_INTERVAL);
-    keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    // Skip the immediate first tick (interval fires once right away).
-    keepalive.tick().await;
-    let mut ka_id: u8 = 0;
+    // DPD: the F5 server sends LCP Echo-Requests and tears the tunnel down at
+    // its ~149 s DPD timeout if we do not answer. We REPLY to those (see the
+    // tunnel->OS path below) rather than proactively pinging — testing whether
+    // replying alone is sufficient (it is what the server's liveness check
+    // actually waits on). If a soak shows the server does NOT poll us, restore
+    // the proactive Echo-Request sender (git history: lcp_echo_request on a
+    // 20 s interval).
 
     loop {
         tokio::select! {
             _ = shutdown.notified() => return DisconnectReason::UserRequested,
-
-            // Periodic keepalive / DPD — sent every interval regardless of data.
-            _ = keepalive.tick() => {
-                ka_id = ka_id.wrapping_add(1);
-                // openconnect sends an LCP Echo-Request whose payload is EXACTLY
-                // the 4-byte magic (`ECHOREQ, 4, &out_lcp_magic`). We previously
-                // appended the magic again (8 bytes) which the F5 server ignored
-                // for DPD; send just the magic, no extra data.
-                let echo = crate::vpn::f5::ppp::lcp_echo_request(ka_id, magic, &[]);
-                let wire = f5_encap(&crate::vpn::f5::ppp::build_ncp_frame(&echo));
-                if debug {
-                    debug_log!("[f5-data] keepalive: sent LCP Echo-Request #{ka_id}");
-                }
-                if transport.send(&wire).await.is_err() {
-                    debug_log!("[f5-data] tunnel ended: keepalive send failed");
-                    return DisconnectReason::ServerClosed;
-                }
-            }
 
             // OS -> tunnel
             r = tun.read_packet(&mut tun_buf) => {
@@ -1245,14 +1218,17 @@ mod tests {
         assert_eq!(ppp_payload_if_ip(&lcp), None);
     }
 
-    // The idle pump must emit a PPP keepalive (LCP Echo-Request) so the F5
-    // server's DPD does not expire and drop the tunnel. Uses paused tokio time
-    // to fast-forward the keepalive interval deterministically (no real wait).
+    // The F5 server's DPD sends LCP Echo-Requests and drops the tunnel (~149 s)
+    // unless we answer. The pump must reply to an inbound Echo-Request with an
+    // Echo-Reply carrying our magic — this is the liveness signal the server
+    // actually waits on.
     #[cfg(feature = "test-actors")]
-    #[tokio::test(start_paused = true)]
-    async fn idle_pump_sends_keepalive_echo_request() {
-        use crate::vpn::f5::framing::f5_decap;
-        use crate::vpn::f5::ppp::{parse_ppp_frame, ECHOREQ, PPP_LCP};
+    #[tokio::test]
+    async fn pump_replies_to_server_echo_request() {
+        use crate::vpn::f5::framing::{f5_decap, f5_encap};
+        use crate::vpn::f5::ppp::{
+            build_ncp_frame, lcp_echo_request, parse_ppp_frame, ECHOREP, PPP_LCP,
+        };
         use crate::vpn::testkit::transport::MemoryTransport;
         use crate::vpn::transport::{NoopTun, Transport};
 
@@ -1261,27 +1237,28 @@ mod tests {
         let shutdown = std::sync::Arc::new(Notify::new());
         let magic = 0x0a0b0c0du32;
 
-        // Run the pump in the background (NoopTun never yields packets -> idle).
         let pump =
             tokio::spawn(
                 async move { pump_packets(&mut client, &mut tun, &shutdown, magic).await },
             );
 
-        // Advance past one keepalive interval, then yield so the spawned pump
-        // task wakes on its timer and writes the keepalive into the in-memory
-        // channel. (Under paused time a real `timeout` would auto-advance and
-        // race the pump, so we drive scheduling explicitly instead.)
-        tokio::time::advance(KEEPALIVE_INTERVAL + Duration::from_secs(1)).await;
-        for _ in 0..16 {
-            tokio::task::yield_now().await;
-        }
+        // Server sends an Echo-Request (id 42); the pump must answer.
+        let req = lcp_echo_request(42, 0x99887766, &[]);
+        server
+            .send(&f5_encap(&build_ncp_frame(&req)))
+            .await
+            .expect("send echo-request");
 
         let mut buf = vec![0u8; 4096];
-        let n = server.recv(&mut buf).await.expect("recv ok");
+        let n = tokio::time::timeout(Duration::from_secs(5), server.recv(&mut buf))
+            .await
+            .expect("reply should arrive in bounded time")
+            .expect("recv ok");
         let frames = f5_decap(&buf[..n]).expect("valid f5 frame");
         let pkt = parse_ppp_frame(&frames[0]).expect("valid ppp frame");
         assert_eq!(pkt.proto, PPP_LCP);
-        assert_eq!(pkt.code, ECHOREQ, "idle pump must send an LCP Echo-Request");
+        assert_eq!(pkt.code, ECHOREP, "pump must answer with an LCP Echo-Reply");
+        assert_eq!(pkt.id, 42, "Echo-Reply must echo the request id");
 
         pump.abort();
     }
