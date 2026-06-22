@@ -161,6 +161,11 @@ impl DnsApplier for SystemDnsApplier {
                 if debug {
                     eprintln!("[dns] resolvectl {}", dns_args.join(" "));
                 }
+                // akon ships a polkit rule (49-akon-resolved-dns.rules) so this
+                // succeeds without an authentication prompt for a local active
+                // user. If the rule is absent, polkit denies non-interactively
+                // (it does not hang); we return Err and the caller degrades to a
+                // WARN, keeping the tunnel up (best-effort DNS — FR-005).
                 let out = Command::new("resolvectl").args(&dns_args).output()?;
                 if !out.status.success() {
                     let msg = String::from_utf8_lossy(&out.stderr);

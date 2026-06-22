@@ -1,0 +1,22 @@
+// akon — allow a local, active, unprivileged user to apply/revert the VPN
+// tunnel's DNS through systemd-resolved without an authentication prompt.
+//
+// akon runs as the user (rootless, with only a CAP_NET_ADMIN file capability),
+// so setting the tunnel link's DNS via `resolvectl` would otherwise prompt for
+// admin authentication on every `akon vpn on` (systemd-resolved gates these
+// actions behind auth_admin). This rule grants ONLY the four resolve1 DNS
+// actions akon needs, and ONLY for local active sessions. It does not affect any
+// other action.
+//
+// Installed at: /usr/share/polkit-1/rules.d/49-akon-resolved-dns.rules
+// (prefix 49 sorts before the distro 50-default.rules).
+
+polkit.addRule(function(action, subject) {
+    if (subject.local && subject.active &&
+        (action.id == "org.freedesktop.resolve1.set-dns-servers" ||
+         action.id == "org.freedesktop.resolve1.set-domains" ||
+         action.id == "org.freedesktop.resolve1.set-default-route" ||
+         action.id == "org.freedesktop.resolve1.revert")) {
+        return polkit.Result.YES;
+    }
+});
