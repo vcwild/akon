@@ -81,6 +81,10 @@ enum VpnCommands {
         /// Force reconnection (disconnects existing connection and resets state)
         #[arg(short, long)]
         force: bool,
+        /// Stay in the foreground instead of backgrounding after connect (useful
+        /// for CI / supervised environments or debugging)
+        #[arg(long)]
+        foreground: bool,
     },
     /// Disconnect from VPN
     Off,
@@ -101,7 +105,7 @@ async fn main() {
     let result = match cli.command {
         Some(Commands::Setup) => cli::setup::run_setup(),
         Some(Commands::Vpn { action }) => match action {
-            VpnCommands::On { force } => cli::vpn::run_vpn_on(force).await,
+            VpnCommands::On { force, foreground } => cli::vpn::run_vpn_on(force, foreground).await,
             VpnCommands::Off => cli::vpn::run_vpn_off().await,
             VpnCommands::Status => cli::vpn::run_vpn_status(),
         },
@@ -112,7 +116,7 @@ async fn main() {
             match load_config() {
                 Ok(config) if config.lazy_mode => {
                     // Lazy mode enabled - run vpn on
-                    cli::vpn::run_vpn_on(false).await
+                    cli::vpn::run_vpn_on(false, false).await
                 }
                 Ok(_) => {
                     // Config exists but lazy mode disabled - show help

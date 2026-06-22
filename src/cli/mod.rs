@@ -2,6 +2,7 @@
 //!
 //! This module contains the implementation of all CLI subcommands.
 
+pub mod background;
 pub mod get_password;
 pub mod setup;
 pub mod vpn;
