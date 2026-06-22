@@ -256,6 +256,48 @@ pub fn if_nametoindex(name: &str) -> io::Result<u32> {
     }
 }
 
+/// Whether a network interface with the given name currently exists.
+///
+/// This is the ground-truth signal for "is the tunnel up?" — it reflects kernel
+/// state, not a recorded PID or a state file. Requires no privilege.
+pub fn interface_exists(name: &str) -> bool {
+    if_nametoindex(name).is_ok()
+}
+
+/// Read the first IPv4 address currently assigned to `name`, live from the
+/// kernel via `getifaddrs`. Returns `None` if the interface is absent or has no
+/// IPv4 address. Requires no privilege.
+pub fn interface_ipv4(name: &str) -> Option<std::net::Ipv4Addr> {
+    use std::net::Ipv4Addr;
+
+    let mut ifap: *mut libc::ifaddrs = std::ptr::null_mut();
+    // SAFETY: getifaddrs allocates a linked list that we free below.
+    if unsafe { libc::getifaddrs(&mut ifap) } != 0 {
+        return None;
+    }
+    let mut result: Option<Ipv4Addr> = None;
+    let mut cur = ifap;
+    // SAFETY: walk the NULL-terminated list; nodes are valid until freeifaddrs.
+    while !cur.is_null() {
+        let ifa = unsafe { &*cur };
+        if !ifa.ifa_addr.is_null() {
+            let sa = unsafe { &*ifa.ifa_addr };
+            if sa.sa_family as i32 == libc::AF_INET {
+                let cname = unsafe { std::ffi::CStr::from_ptr(ifa.ifa_name) };
+                if cname.to_str().map(|n| n == name).unwrap_or(false) {
+                    let sin = unsafe { &*(ifa.ifa_addr as *const libc::sockaddr_in) };
+                    result = Some(Ipv4Addr::from(u32::from_be(sin.sin_addr.s_addr)));
+                    break;
+                }
+            }
+        }
+        cur = ifa.ifa_next;
+    }
+    // SAFETY: ifap came from getifaddrs and is freed exactly once.
+    unsafe { libc::freeifaddrs(ifap) };
+    result
+}
+
 // ---- socket adapter (thin) ----
 
 /// A `NETLINK_ROUTE` socket for issuing rtnetlink requests in-process.
@@ -676,5 +718,26 @@ mod tests {
         push_rtattr(&mut body, RTA_OIF, &3u32.to_ne_bytes());
         let msg = build_nlmsg(RTM_NEWROUTE, 0, 1, &body);
         assert_eq!(parse_default_route(&msg), None);
+    }
+
+    // T002 — bounded real adapter test for the status ground-truth helpers.
+    // Uses the loopback interface, which always exists and carries 127.0.0.1.
+
+    #[test]
+    fn interface_exists_for_loopback_not_for_bogus() {
+        assert!(interface_exists("lo"), "loopback must exist");
+        assert!(
+            !interface_exists("akon-no-such-iface0"),
+            "a clearly-absent interface must not exist"
+        );
+    }
+
+    #[test]
+    fn interface_ipv4_reads_loopback_address() {
+        assert_eq!(
+            interface_ipv4("lo"),
+            Some(std::net::Ipv4Addr::new(127, 0, 0, 1))
+        );
+        assert_eq!(interface_ipv4("akon-no-such-iface0"), None);
     }
 }
