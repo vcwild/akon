@@ -393,9 +393,6 @@ impl TunDevice for LinuxTun {
     }
 
     async fn write_packet(&mut self, packet: &[u8]) -> io::Result<()> {
-        if std::env::var("AKON_F5_DEBUG").as_deref() == Ok("1") {
-            eprintln!("[tun-io] write {} bytes to OS", packet.len());
-        }
         // One write(2) == one packet on a TUN. Wait for writability, then issue
         // the raw syscall via the guard, retrying on spurious wakeups.
         loop {
@@ -438,9 +435,6 @@ impl TunDevice for LinuxTun {
                 Err(_would_block) => continue,
             }
         };
-        if std::env::var("AKON_F5_DEBUG").as_deref() == Ok("1") {
-            eprintln!("[tun-io] read {n} bytes from OS");
-        }
         Ok(n)
     }
 }

@@ -822,6 +822,12 @@ async fn run_data_plane(
 /// 20 s matches openconnect's keepalive range.
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(20);
 
+/// Under `AKON_F5_DEBUG`, log a throughput summary every this many packets
+/// (per direction) instead of dumping every packet's bytes — a 20-min soak
+/// produced ~150k per-packet lines (32 MB) that buried the lifecycle/keepalive
+/// facts we actually care about.
+const DATA_LOG_EVERY: u64 = 500;
+
 /// The inner packet-forwarding loop (separated so DNS revert always runs on
 /// exit). Returns the reason the pump stopped: `UserRequested` if `disconnect`
 /// signalled shutdown, otherwise `ServerClosed` (transport/TUN ended).
@@ -884,11 +890,8 @@ async fn pump_packets(
                     }
                     Ok(n) => {
                         out_pkts += 1;
-                        if debug {
-                            debug_log!(
-                                "[f5-data] OS->tun #{out_pkts}: {n} bytes {}",
-                                hex_preview(&tun_buf[..n], 20)
-                            );
+                        if debug && out_pkts % DATA_LOG_EVERY == 0 {
+                            debug_log!("[f5-data] throughput: out={out_pkts} in={in_pkts} pkts");
                         }
                         let ppp_frame = wrap_ip_in_ppp(&tun_buf[..n]);
                         let wire = f5_encap(&ppp_frame);
@@ -917,19 +920,12 @@ async fn pump_packets(
                                 // residual LCP/IPCP control frames are ignored.
                                 if let Some(ip_packet) = ppp_payload_if_ip(&ppp) {
                                     in_pkts += 1;
-                                    if debug {
-                                        eprintln!(
-                                            "[f5-data] tun<-net #{in_pkts}: {} bytes {}",
-                                            ip_packet.len(),
-                                            hex_preview(ip_packet, 20)
+                                    if debug && in_pkts % DATA_LOG_EVERY == 0 {
+                                        debug_log!(
+                                            "[f5-data] throughput: out={out_pkts} in={in_pkts} pkts"
                                         );
                                     }
                                     let _ = tun.write_packet(ip_packet).await;
-                                } else if debug {
-                                    eprintln!(
-                                        "[f5-data] tun<-net non-IP ctrl frame: {}",
-                                        hex_preview(&ppp, 16)
-                                    );
                                 }
                             }
                         }
