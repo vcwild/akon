@@ -329,7 +329,7 @@ impl VpnBackend for NativeF5Backend {
             };
 
             // --- Data plane: pump packets until disconnect or transport EOF ---
-            run_data_plane(
+            let reason = run_data_plane(
                 transport.as_mut(),
                 tun.as_mut(),
                 dns.as_mut(),
@@ -344,9 +344,10 @@ impl VpnBackend for NativeF5Backend {
             graceful_teardown(transport.as_mut(), &host, &session).await;
 
             shared.lock().expect("poisoned").alive = false;
-            let _ = tx.send(LifecycleEvent::Disconnected {
-                reason: crate::vpn::backend::DisconnectReason::UserRequested,
-            });
+            // Emit the ACTUAL reason: UserRequested (we called disconnect) vs
+            // ServerClosed (the tunnel dropped on its own). The supervisor uses
+            // this to decide whether to reconnect.
+            let _ = tx.send(LifecycleEvent::Disconnected { reason });
         });
 
         Ok(rx)
@@ -354,7 +355,10 @@ impl VpnBackend for NativeF5Backend {
 
     fn disconnect(&mut self) -> Result<(), BackendError> {
         // Signal the running session to stop pumping and tear down gracefully.
-        self.shutdown.notify_waiters();
+        // `notify_one` stores a permit if the pump is not currently parked on
+        // `notified()` (e.g. mid-loop or still starting up), so the shutdown is
+        // never lost — unlike `notify_waiters`, which only wakes current waiters.
+        self.shutdown.notify_one();
         // Reflect intent immediately for observers; the session task clears the
         // handle once teardown completes.
         self.shared.lock().expect("poisoned").alive = false;
@@ -737,19 +741,19 @@ async fn run_data_plane(
     tx: &UnboundedSender<LifecycleEvent>,
     shared: &Arc<Mutex<Shared>>,
     shutdown: &Arc<Notify>,
-) {
+) -> crate::vpn::backend::DisconnectReason {
     // Configure the OS interface with the negotiated parameters. This is the
     // step that actually makes the tunnel usable (address, MTU, routes). If it
     // fails we must NOT pretend to be connected: surface a `Failed` event so
     // the supervisor/CLI reacts, instead of silently leaving a dead tunnel
     // (the production "looks connected but everything hangs" bug).
     if let Err(e) = tun.configure(&session.tun_config).await {
-        eprintln!("[tun-cfg] ERROR: interface configuration failed: {e}");
+        crate::vpn::f5::http::debug_log!("[tun-cfg] ERROR: interface configuration failed: {e}");
         let _ = tx.send(LifecycleEvent::Failed {
             kind: FailureKind::Network,
             detail: format!("failed to configure tunnel interface: {e}"),
         });
-        return;
+        return crate::vpn::backend::DisconnectReason::ServerClosed;
     }
 
     // Capture the host-teardown plan now that `configure` has recorded the
@@ -768,9 +772,11 @@ async fn run_data_plane(
         match dns.apply(&session.device, &session.tun_config) {
             Ok(()) => {
                 if crate::vpn::f5::http::debug_enabled() {
-                    eprintln!(
+                    crate::vpn::f5::http::debug_log!(
                         "[dns] applied: servers={:?} domains={:?} on {}",
-                        session.tun_config.dns, session.tun_config.domains, session.device
+                        session.tun_config.dns,
+                        session.tun_config.domains,
+                        session.device
                     );
                 }
                 if dns.mutates_host() {
@@ -779,7 +785,9 @@ async fn run_data_plane(
             }
             Err(e) => {
                 // Always visible: DNS failure means VPN-only names won't resolve.
-                eprintln!("[dns] WARNING: failed to apply VPN DNS: {e} — names may not resolve")
+                crate::vpn::f5::http::debug_log!(
+                    "[dns] WARNING: failed to apply VPN DNS: {e} — names may not resolve"
+                )
             }
         }
     }
@@ -802,42 +810,70 @@ async fn run_data_plane(
         device: session.device.clone(),
     });
 
-    // Run the pump until it exits, then always revert DNS.
-    pump_packets(transport, tun, shutdown).await;
+    // Run the pump until it exits, then always revert DNS. The exit reason tells
+    // the caller whether WE requested the disconnect or the tunnel dropped.
+    let reason = pump_packets(transport, tun, shutdown, session.magic).await;
     let _ = dns.revert(&session.device);
+    reason
 }
 
-/// The inner packet-forwarding loop (separated so DNS revert always runs on exit).
+/// Under `AKON_F5_DEBUG`, log a throughput summary every this many packets
+/// (per direction) instead of dumping every packet's bytes — a 20-min soak
+/// produced ~150k per-packet lines (32 MB) that buried the lifecycle/keepalive
+/// facts we actually care about.
+const DATA_LOG_EVERY: u64 = 500;
+
+/// The inner packet-forwarding loop (separated so DNS revert always runs on
+/// exit). Returns the reason the pump stopped: `UserRequested` if `disconnect`
+/// signalled shutdown, otherwise `ServerClosed` (transport/TUN ended).
+///
+/// Keeps the tunnel alive against the F5 server's dead-peer-detection by
+/// REPLYING to the server's LCP Echo-Requests with an Echo-Reply carrying
+/// `magic`. The server polls (~every 30 s) and tears the tunnel down after a
+/// few unanswered (~149 s); answering is the only liveness signal it waits on,
+/// so akon does not proactively ping (`out_pkts` is throughput logging only).
 async fn pump_packets(
     transport: &mut dyn Transport,
     tun: &mut dyn TunDevice,
     shutdown: &Arc<Notify>,
-) {
+    magic: u32,
+) -> crate::vpn::backend::DisconnectReason {
+    use crate::vpn::backend::DisconnectReason;
+    use crate::vpn::f5::http::debug_log;
     let mut tun_buf = vec![0u8; 4096];
     let mut net_buf = vec![0u8; 4096];
     let debug = crate::vpn::f5::http::debug_enabled();
     let (mut out_pkts, mut in_pkts) = (0u64, 0u64);
 
+    // DPD: the F5 server sends LCP Echo-Requests and tears the tunnel down at
+    // its ~149 s DPD timeout if we do not answer. We REPLY to those (see the
+    // tunnel->OS path below) rather than proactively pinging — testing whether
+    // replying alone is sufficient (it is what the server's liveness check
+    // actually waits on). If a soak shows the server does NOT poll us, restore
+    // the proactive Echo-Request sender (git history: lcp_echo_request on a
+    // 20 s interval).
+
     loop {
         tokio::select! {
-            _ = shutdown.notified() => return,
+            _ = shutdown.notified() => return DisconnectReason::UserRequested,
 
             // OS -> tunnel
             r = tun.read_packet(&mut tun_buf) => {
                 match r {
-                    Ok(0) | Err(_) => return,
+                    Ok(0) | Err(_) => {
+                        debug_log!("[f5-data] tunnel ended: TUN device closed");
+                        return DisconnectReason::ServerClosed;
+                    }
                     Ok(n) => {
                         out_pkts += 1;
-                        if debug {
-                            eprintln!(
-                                "[f5-data] OS->tun #{out_pkts}: {n} bytes {}",
-                                hex_preview(&tun_buf[..n], 20)
-                            );
+                        if debug && out_pkts % DATA_LOG_EVERY == 0 {
+                            debug_log!("[f5-data] throughput: out={out_pkts} in={in_pkts} pkts");
                         }
                         let ppp_frame = wrap_ip_in_ppp(&tun_buf[..n]);
                         let wire = f5_encap(&ppp_frame);
                         if transport.send(&wire).await.is_err() {
-                            return;
+                            debug_log!("[f5-data] tunnel ended: transport send failed");
+                            return DisconnectReason::ServerClosed;
                         }
                     }
                 }
@@ -846,27 +882,54 @@ async fn pump_packets(
             // tunnel -> OS
             r = transport.recv(&mut net_buf) => {
                 match r {
-                    Ok(0) | Err(_) => return,
+                    Ok(0) | Err(_) => {
+                        // The server closed the tunnel TLS connection (or it
+                        // errored). This is the common "server dropped the
+                        // tunnel" case; log it so the reconnect cause is visible.
+                        debug_log!("[f5-data] tunnel ended: server closed the connection");
+                        return DisconnectReason::ServerClosed;
+                    }
                     Ok(n) => {
                         if let Ok(frames) = f5_decap(&net_buf[..n]) {
                             for ppp in frames {
-                                // Strip the PPP header and forward only IP packets;
-                                // residual LCP/IPCP control frames are ignored.
                                 if let Some(ip_packet) = ppp_payload_if_ip(&ppp) {
                                     in_pkts += 1;
-                                    if debug {
-                                        eprintln!(
-                                            "[f5-data] tun<-net #{in_pkts}: {} bytes {}",
-                                            ip_packet.len(),
-                                            hex_preview(ip_packet, 20)
+                                    if debug && in_pkts % DATA_LOG_EVERY == 0 {
+                                        debug_log!(
+                                            "[f5-data] throughput: out={out_pkts} in={in_pkts} pkts"
                                         );
                                     }
                                     let _ = tun.write_packet(ip_packet).await;
-                                } else if debug {
-                                    eprintln!(
-                                        "[f5-data] tun<-net non-IP ctrl frame: {}",
-                                        hex_preview(&ppp, 16)
-                                    );
+                                } else if let Ok(pkt) =
+                                    crate::vpn::f5::ppp::parse_ppp_frame(&ppp)
+                                {
+                                    // The server's DPD: it sends LCP Echo-Requests
+                                    // and tears the tunnel down (~149 s) if we do
+                                    // not answer. Reply with an Echo-Reply carrying
+                                    // our magic, exactly like openconnect's
+                                    // `ECHOREQ -> ECHOREP, 4, &out_lcp_magic`.
+                                    if pkt.proto == crate::vpn::f5::ppp::PPP_LCP
+                                        && pkt.code == crate::vpn::f5::ppp::ECHOREQ
+                                    {
+                                        let reply = crate::vpn::f5::ppp::lcp_echo_reply(
+                                            pkt.id, magic, &[],
+                                        );
+                                        let wire = f5_encap(
+                                            &crate::vpn::f5::ppp::build_ncp_frame(&reply),
+                                        );
+                                        if debug {
+                                            debug_log!(
+                                                "[f5-data] keepalive: replied to server Echo-Request id={}",
+                                                pkt.id
+                                            );
+                                        }
+                                        if transport.send(&wire).await.is_err() {
+                                            debug_log!(
+                                                "[f5-data] tunnel ended: echo-reply send failed"
+                                            );
+                                            return DisconnectReason::ServerClosed;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1154,5 +1217,50 @@ mod tests {
         // LCP control frame -> not IP
         let lcp = [0xff, 0x03, 0xc0, 0x21, 0x01];
         assert_eq!(ppp_payload_if_ip(&lcp), None);
+    }
+
+    // The F5 server's DPD sends LCP Echo-Requests and drops the tunnel (~149 s)
+    // unless we answer. The pump must reply to an inbound Echo-Request with an
+    // Echo-Reply carrying our magic — this is the liveness signal the server
+    // actually waits on.
+    #[cfg(feature = "test-actors")]
+    #[tokio::test]
+    async fn pump_replies_to_server_echo_request() {
+        use crate::vpn::f5::framing::{f5_decap, f5_encap};
+        use crate::vpn::f5::ppp::{
+            build_ncp_frame, lcp_echo_request, parse_ppp_frame, ECHOREP, PPP_LCP,
+        };
+        use crate::vpn::testkit::transport::MemoryTransport;
+        use crate::vpn::transport::{NoopTun, Transport};
+
+        let (mut client, mut server) = MemoryTransport::pair();
+        let mut tun = NoopTun::default();
+        let shutdown = std::sync::Arc::new(Notify::new());
+        let magic = 0x0a0b0c0du32;
+
+        let pump =
+            tokio::spawn(
+                async move { pump_packets(&mut client, &mut tun, &shutdown, magic).await },
+            );
+
+        // Server sends an Echo-Request (id 42); the pump must answer.
+        let req = lcp_echo_request(42, 0x99887766, &[]);
+        server
+            .send(&f5_encap(&build_ncp_frame(&req)))
+            .await
+            .expect("send echo-request");
+
+        let mut buf = vec![0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(5), server.recv(&mut buf))
+            .await
+            .expect("reply should arrive in bounded time")
+            .expect("recv ok");
+        let frames = f5_decap(&buf[..n]).expect("valid f5 frame");
+        let pkt = parse_ppp_frame(&frames[0]).expect("valid ppp frame");
+        assert_eq!(pkt.proto, PPP_LCP);
+        assert_eq!(pkt.code, ECHOREP, "pump must answer with an LCP Echo-Reply");
+        assert_eq!(pkt.id, 42, "Echo-Reply must echo the request id");
+
+        pump.abort();
     }
 }

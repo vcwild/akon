@@ -172,7 +172,7 @@ pub async fn send_request<T: Transport + ?Sized>(
     request: &HttpRequest<'_>,
 ) -> Result<HttpResponse, F5Error> {
     if debug_enabled() {
-        eprintln!(
+        debug_log!(
             "[f5-http] >>> {} {} (host {}){}",
             request.method,
             request.path,
@@ -192,7 +192,7 @@ pub async fn send_request<T: Transport + ?Sized>(
     if debug_enabled() {
         match &resp {
             Ok(r) => {
-                eprintln!(
+                debug_log!(
                     "[f5-http] <<< {} ({} body bytes, {} leftover){}",
                     r.status,
                     r.body.len(),
@@ -208,11 +208,11 @@ pub async fn send_request<T: Transport + ?Sized>(
                         k.as_str(),
                         "location" | "connection" | "content-length" | "set-cookie"
                     ) {
-                        eprintln!("[f5-http]     {k}: {v}");
+                        debug_log!("[f5-http]     {k}: {v}");
                     }
                 }
             }
-            Err(e) => eprintln!("[f5-http] <<< ERROR {e}"),
+            Err(e) => debug_log!("[f5-http] <<< ERROR {e}"),
         }
     }
     resp
@@ -222,6 +222,22 @@ pub async fn send_request<T: Transport + ?Sized>(
 pub fn debug_enabled() -> bool {
     std::env::var("AKON_F5_DEBUG").as_deref() == Ok("1")
 }
+
+/// A wall-clock timestamp (`HH:MM:SS.mmm`) for prefixing debug log lines, so a
+/// soak-test log shows *when* each event (keepalive, drop, packet) happened.
+pub fn debug_ts() -> String {
+    chrono::Local::now().format("%H:%M:%S%.3f").to_string()
+}
+
+/// Print a timestamped debug line to stderr (only meaningful when
+/// [`debug_enabled`] is true; callers gate on it). Mirrors `eprintln!` args but
+/// prepends `[HH:MM:SS.mmm] `.
+macro_rules! debug_log {
+    ($($arg:tt)*) => {
+        eprintln!("[{}] {}", $crate::vpn::f5::http::debug_ts(), format_args!($($arg)*))
+    };
+}
+pub(crate) use debug_log;
 
 /// Read and parse an HTTP/1.1 response from the transport.
 pub async fn read_response<T: Transport + ?Sized>(
@@ -380,6 +396,22 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 mod tests {
     use super::*;
     use crate::vpn::testkit::transport::MemoryTransport;
+
+    #[test]
+    fn debug_ts_is_hh_mm_ss_millis() {
+        // Soak logs depend on each debug line carrying a wall-clock timestamp.
+        let ts = debug_ts();
+        // Shape: HH:MM:SS.mmm — 12 chars, colons at 2/5, dot at 8, all else digits.
+        assert_eq!(ts.len(), 12, "unexpected timestamp: {ts}");
+        let b = ts.as_bytes();
+        assert_eq!((b[2], b[5], b[8]), (b':', b':', b'.'), "separators: {ts}");
+        assert!(
+            ts.chars()
+                .enumerate()
+                .all(|(i, c)| matches!(i, 2 | 5 | 8) || c.is_ascii_digit()),
+            "non-digit in timestamp: {ts}"
+        );
+    }
 
     #[test]
     fn request_serializes_get() {

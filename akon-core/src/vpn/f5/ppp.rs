@@ -350,6 +350,24 @@ pub fn lcp_echo_reply(id: u8, magic: u32, data: &[u8]) -> NcpPacket {
     }
 }
 
+/// Build an LCP Echo-Request carrying our magic number.
+///
+/// akon keeps the tunnel alive by REPLYING to the server's Echo-Requests (see
+/// `lcp_echo_reply` and `pump_packets`), not by pinging proactively, so no
+/// production path currently sends this. It is retained to construct
+/// Echo-Request frames in tests (and as the building block should a proactive
+/// client-side DPD sender, like openconnect's `KA_DPD`, ever be needed).
+pub fn lcp_echo_request(id: u8, magic: u32, data: &[u8]) -> NcpPacket {
+    let mut payload = magic.to_be_bytes().to_vec();
+    payload.extend_from_slice(data);
+    NcpPacket {
+        proto: PPP_LCP,
+        code: ECHOREQ,
+        id,
+        options: raw_payload_options(&payload),
+    }
+}
+
 /// Build an LCP Terminate-Request.
 pub fn lcp_terminate_request(id: u8) -> NcpPacket {
     NcpPacket {
@@ -1231,6 +1249,27 @@ mod tests {
         assert_eq!(body, expected);
         // No phase change from a DPD echo.
         assert_eq!(neg.phase(), PppPhase::EstablishLcp);
+    }
+
+    #[test]
+    fn lcp_echo_request_is_valid_dpd_frame_with_magic() {
+        let magic = 0x1234_5678u32;
+        // The DPD keepalive (what the data pump sends) carries EXACTLY the
+        // 4-byte magic and no extra data, matching openconnect's
+        // `queue_config_packet(.., ECHOREQ, 4, &out_lcp_magic)`. An 8-byte body
+        // (magic duplicated) is what the F5 server ignored for DPD.
+        let req = lcp_echo_request(7, magic, &[]);
+        let frame = build_ncp_frame(&req);
+        let parsed = parse_ppp_frame(&frame).unwrap();
+        assert_eq!(parsed.proto, PPP_LCP);
+        assert_eq!(parsed.code, ECHOREQ);
+        assert_eq!(parsed.id, 7);
+        let body = echo_data(&parsed);
+        assert_eq!(
+            body,
+            magic.to_be_bytes().to_vec(),
+            "DPD body must be magic only"
+        );
     }
 
     #[test]

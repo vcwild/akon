@@ -3,6 +3,38 @@
 All notable changes to akon are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] — 2026-06-22
+
+Reliability and UX hardening for the native F5 client. No breaking changes;
+upgrade in place.
+
+### Fixed
+
+- **Stable long-lived tunnels (no more periodic drops).** The F5 server runs
+  dead-peer-detection by sending LCP Echo-Requests (~every 30 s) and tearing the
+  tunnel down after a few go unanswered (~149 s). The data plane previously
+  ignored inbound LCP control frames, so the server declared the client dead and
+  dropped the connection on a fixed interval. akon now replies to the server's
+  Echo-Requests with an Echo-Reply, keeping the tunnel up indefinitely.
+- **Robust reconnection.** Supervision is now event-driven: a dropped tunnel is
+  detected immediately (rather than by polling) and reconnects, regenerating a
+  fresh OTP per attempt so time-based one-time passwords are not reused.
+- **No password prompts for DNS.** A scoped polkit rule authorizes the
+  `systemd-resolved` DNS operations akon needs, so `vpn on`/`off` no longer
+  prompt for a password mid-connection.
+- **`vpn off` no longer prints spurious errors.** DNS revert no longer leaks
+  `Failed to resolve interface "tunN": No such device` when the link is already
+  gone (resolved auto-reverts in that case).
+
+### Added
+
+- **Background mode** for `akon vpn on` (returns your terminal once connected);
+  use `--foreground` to keep it attached.
+- **`vpn status`** reflects the real tunnel interface state rather than a process
+  handle.
+- **Timestamped debug logs** under `AKON_F5_DEBUG=1`, with periodic throughput
+  summaries instead of per-packet dumps, for readable soak logs.
+
 ## [2.0.0] — 2026-06-21
 
 ### ⚠️ Breaking changes
