@@ -843,37 +843,36 @@ async fn pump_packets(
     let debug = crate::vpn::f5::http::debug_enabled();
     let (mut out_pkts, mut in_pkts) = (0u64, 0u64);
 
-    // Keepalive state: a timer plus the out_pkts value at the last tick, so we
-    // can skip the keepalive when data is already flowing.
+    // Keepalive / DPD timer. The F5 server resets its dead-peer-detection clock
+    // on a *control-plane* LCP Echo-Request, NOT on data traffic: a 20-min soak
+    // with constant outbound packets still dropped at the server's ~149 s DPD
+    // interval. So we send the Echo-Request on every tick unconditionally —
+    // skipping it when data is flowing (as openconnect does) left the keepalive
+    // never firing under real traffic and the tunnel kept dropping.
     let mut keepalive = tokio::time::interval(KEEPALIVE_INTERVAL);
     keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // Skip the immediate first tick (interval fires once right away).
     keepalive.tick().await;
-    let mut out_pkts_at_last_ka = 0u64;
     let mut ka_id: u8 = 0;
 
     loop {
         tokio::select! {
             _ = shutdown.notified() => return DisconnectReason::UserRequested,
 
-            // Periodic keepalive / DPD.
+            // Periodic keepalive / DPD — sent every interval regardless of data.
             _ = keepalive.tick() => {
-                if out_pkts == out_pkts_at_last_ka {
-                    // No data sent since the last tick: send an explicit DPD.
-                    ka_id = ka_id.wrapping_add(1);
-                    let echo = crate::vpn::f5::ppp::lcp_echo_request(
-                        ka_id, magic, &magic.to_be_bytes(),
-                    );
-                    let wire = f5_encap(&crate::vpn::f5::ppp::build_ncp_frame(&echo));
-                    if debug {
-                        debug_log!("[f5-data] keepalive: sent LCP Echo-Request #{ka_id}");
-                    }
-                    if transport.send(&wire).await.is_err() {
-                        debug_log!("[f5-data] tunnel ended: keepalive send failed");
-                        return DisconnectReason::ServerClosed;
-                    }
+                ka_id = ka_id.wrapping_add(1);
+                let echo = crate::vpn::f5::ppp::lcp_echo_request(
+                    ka_id, magic, &magic.to_be_bytes(),
+                );
+                let wire = f5_encap(&crate::vpn::f5::ppp::build_ncp_frame(&echo));
+                if debug {
+                    debug_log!("[f5-data] keepalive: sent LCP Echo-Request #{ka_id}");
                 }
-                out_pkts_at_last_ka = out_pkts;
+                if transport.send(&wire).await.is_err() {
+                    debug_log!("[f5-data] tunnel ended: keepalive send failed");
+                    return DisconnectReason::ServerClosed;
+                }
             }
 
             // OS -> tunnel
