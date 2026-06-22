@@ -767,15 +767,18 @@ async fn run_data_plane(
     if !session.tun_config.dns.is_empty() {
         match dns.apply(&session.device, &session.tun_config) {
             Ok(()) => {
-                eprintln!(
-                    "[dns] applied: servers={:?} domains={:?} on {}",
-                    session.tun_config.dns, session.tun_config.domains, session.device
-                );
+                if crate::vpn::f5::http::debug_enabled() {
+                    eprintln!(
+                        "[dns] applied: servers={:?} domains={:?} on {}",
+                        session.tun_config.dns, session.tun_config.domains, session.device
+                    );
+                }
                 if dns.mutates_host() {
                     plan.dns_iface = Some(session.device.clone());
                 }
             }
             Err(e) => {
+                // Always visible: DNS failure means VPN-only names won't resolve.
                 eprintln!("[dns] WARNING: failed to apply VPN DNS: {e} — names may not resolve")
             }
         }

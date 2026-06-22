@@ -233,11 +233,14 @@ impl TunDevice for LinuxTun {
 
     async fn configure(&mut self, config: &TunConfig) -> io::Result<()> {
         let dev = self.name.clone();
-        eprintln!(
-            "[tun-cfg] dev={dev} ipv4={:?} mtu={:?} default_gateway={} routes={:?} dns={:?} domains={:?} server_ip={:?}",
-            config.ipv4, config.mtu, config.default_gateway, config.routes,
-            config.dns, config.domains, config.server_ip
-        );
+        let debug = crate::vpn::f5::http::debug_enabled();
+        if debug {
+            eprintln!(
+                "[tun-cfg] dev={dev} ipv4={:?} mtu={:?} default_gateway={} routes={:?} dns={:?} domains={:?} server_ip={:?}",
+                config.ipv4, config.mtu, config.default_gateway, config.routes,
+                config.dns, config.domains, config.server_ip
+            );
+        }
 
         // Record the device in the teardown plan up front: deleting it reaps all
         // device-bound routes (address, default-halves, split routes).
@@ -260,7 +263,11 @@ impl TunDevice for LinuxTun {
         if let Some(addr) = &config.ipv4 {
             if let Ok(ip4) = addr.parse::<std::net::Ipv4Addr>() {
                 match nl.addr_add(ifindex, ip4, 32) {
-                    Ok(()) => eprintln!("[tun-cfg] added address {addr}/32 dev {dev}"),
+                    Ok(()) => {
+                        if debug {
+                            eprintln!("[tun-cfg] added address {addr}/32 dev {dev}");
+                        }
+                    }
                     Err(e) => eprintln!("[tun-cfg] WARN add address {addr}/32 failed: {e}"),
                 }
             } else {
@@ -284,7 +291,9 @@ impl TunDevice for LinuxTun {
                 split_routes.push(norm);
             }
         }
-        eprintln!("[tun-cfg] full_tunnel={full_tunnel}; split_routes={split_routes:?}");
+        if debug {
+            eprintln!("[tun-cfg] full_tunnel={full_tunnel}; split_routes={split_routes:?}");
+        }
 
         // --- Full-tunnel: route everything via the tun, but keep the encrypted
         //     tunnel's own packets to the VPN server on the ORIGINAL default
@@ -296,12 +305,16 @@ impl TunDevice for LinuxTun {
             //    default is overridden) so the encrypted tunnel keeps flowing.
             match original_default_route() {
                 Some((orig_gw, orig_oif)) => {
-                    eprintln!("[tun-cfg] original default: via {orig_gw} oif {orig_oif}");
+                    if debug {
+                        eprintln!("[tun-cfg] original default: via {orig_gw} oif {orig_oif}");
+                    }
                     if let Some(server) = &config.server_ip {
                         if let Ok(server_ip) = server.parse::<std::net::Ipv4Addr>() {
                             match nl.route_add_via(server_ip, 32, orig_gw, orig_oif, true) {
                                 Ok(()) => {
-                                    eprintln!("[tun-cfg] pinned VPN server {server}/32 via original gw {orig_gw}");
+                                    if debug {
+                                        eprintln!("[tun-cfg] pinned VPN server {server}/32 via original gw {orig_gw}");
+                                    }
                                     // Persist for out-of-process teardown: this route
                                     // is NOT device-bound and won't die with the tun.
                                     self.plan.extra_routes.push(format!("{server}/32"));
@@ -321,7 +334,11 @@ impl TunDevice for LinuxTun {
                 (std::net::Ipv4Addr::new(128, 0, 0, 0), 1u8),
             ] {
                 match nl.route_add_dev(dest, prefix, ifindex, true) {
-                    Ok(()) => eprintln!("[tun-cfg] default-half {dest}/{prefix} via {dev}"),
+                    Ok(()) => {
+                        if debug {
+                            eprintln!("[tun-cfg] default-half {dest}/{prefix} via {dev}");
+                        }
+                    }
                     Err(e) => eprintln!("[tun-cfg] WARN default-half {dest}/{prefix} failed: {e}"),
                 }
             }
@@ -334,17 +351,21 @@ impl TunDevice for LinuxTun {
                 Some((dest, prefix)) => match nl.route_add_dev(dest, prefix, ifindex, true) {
                     Ok(()) => {
                         installed += 1;
-                        eprintln!("[tun-cfg] installed split route {route} via {dev}");
+                        if debug {
+                            eprintln!("[tun-cfg] installed split route {route} via {dev}");
+                        }
                     }
                     Err(e) => eprintln!("[tun-cfg] WARN split route {route} failed: {e}"),
                 },
                 None => eprintln!("[tun-cfg] WARN unparseable split route {route}"),
             }
         }
-        eprintln!(
-            "[tun-cfg] routes done: {installed}/{} split installed; full_tunnel={full_tunnel}",
-            split_routes.len()
-        );
+        if debug {
+            eprintln!(
+                "[tun-cfg] routes done: {installed}/{} split installed; full_tunnel={full_tunnel}",
+                split_routes.len()
+            );
+        }
 
         // Loosen reverse-path filtering on the tun so replies arriving on it are
         // not silently dropped when the kernel computes an asymmetric return
