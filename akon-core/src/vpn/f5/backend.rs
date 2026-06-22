@@ -868,9 +868,11 @@ async fn pump_packets(
             // Periodic keepalive / DPD — sent every interval regardless of data.
             _ = keepalive.tick() => {
                 ka_id = ka_id.wrapping_add(1);
-                let echo = crate::vpn::f5::ppp::lcp_echo_request(
-                    ka_id, magic, &magic.to_be_bytes(),
-                );
+                // openconnect sends an LCP Echo-Request whose payload is EXACTLY
+                // the 4-byte magic (`ECHOREQ, 4, &out_lcp_magic`). We previously
+                // appended the magic again (8 bytes) which the F5 server ignored
+                // for DPD; send just the magic, no extra data.
+                let echo = crate::vpn::f5::ppp::lcp_echo_request(ka_id, magic, &[]);
                 let wire = f5_encap(&crate::vpn::f5::ppp::build_ncp_frame(&echo));
                 if debug {
                     debug_log!("[f5-data] keepalive: sent LCP Echo-Request #{ka_id}");
@@ -916,8 +918,6 @@ async fn pump_packets(
                     Ok(n) => {
                         if let Ok(frames) = f5_decap(&net_buf[..n]) {
                             for ppp in frames {
-                                // Strip the PPP header and forward only IP packets;
-                                // residual LCP/IPCP control frames are ignored.
                                 if let Some(ip_packet) = ppp_payload_if_ip(&ppp) {
                                     in_pkts += 1;
                                     if debug && in_pkts % DATA_LOG_EVERY == 0 {
@@ -926,6 +926,36 @@ async fn pump_packets(
                                         );
                                     }
                                     let _ = tun.write_packet(ip_packet).await;
+                                } else if let Ok(pkt) =
+                                    crate::vpn::f5::ppp::parse_ppp_frame(&ppp)
+                                {
+                                    // The server's DPD: it sends LCP Echo-Requests
+                                    // and tears the tunnel down (~149 s) if we do
+                                    // not answer. Reply with an Echo-Reply carrying
+                                    // our magic, exactly like openconnect's
+                                    // `ECHOREQ -> ECHOREP, 4, &out_lcp_magic`.
+                                    if pkt.proto == crate::vpn::f5::ppp::PPP_LCP
+                                        && pkt.code == crate::vpn::f5::ppp::ECHOREQ
+                                    {
+                                        let reply = crate::vpn::f5::ppp::lcp_echo_reply(
+                                            pkt.id, magic, &[],
+                                        );
+                                        let wire = f5_encap(
+                                            &crate::vpn::f5::ppp::build_ncp_frame(&reply),
+                                        );
+                                        if debug {
+                                            debug_log!(
+                                                "[f5-data] keepalive: replied to server Echo-Request id={}",
+                                                pkt.id
+                                            );
+                                        }
+                                        if transport.send(&wire).await.is_err() {
+                                            debug_log!(
+                                                "[f5-data] tunnel ended: echo-reply send failed"
+                                            );
+                                            return DisconnectReason::ServerClosed;
+                                        }
+                                    }
                                 }
                             }
                         }

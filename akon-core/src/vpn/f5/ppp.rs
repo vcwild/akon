@@ -1251,17 +1251,22 @@ mod tests {
     #[test]
     fn lcp_echo_request_is_valid_dpd_frame_with_magic() {
         let magic = 0x1234_5678u32;
-        let req = lcp_echo_request(7, magic, &magic.to_be_bytes());
+        // The DPD keepalive (what the data pump sends) carries EXACTLY the
+        // 4-byte magic and no extra data, matching openconnect's
+        // `queue_config_packet(.., ECHOREQ, 4, &out_lcp_magic)`. An 8-byte body
+        // (magic duplicated) is what the F5 server ignored for DPD.
+        let req = lcp_echo_request(7, magic, &[]);
         let frame = build_ncp_frame(&req);
         let parsed = parse_ppp_frame(&frame).unwrap();
         assert_eq!(parsed.proto, PPP_LCP);
         assert_eq!(parsed.code, ECHOREQ);
         assert_eq!(parsed.id, 7);
-        // Body is magic || data; we put magic as the data too here.
         let body = echo_data(&parsed);
-        let mut expected = magic.to_be_bytes().to_vec();
-        expected.extend_from_slice(&magic.to_be_bytes());
-        assert_eq!(body, expected);
+        assert_eq!(
+            body,
+            magic.to_be_bytes().to_vec(),
+            "DPD body must be magic only"
+        );
     }
 
     #[test]
