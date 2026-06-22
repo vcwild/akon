@@ -3,6 +3,18 @@
 All notable changes to akon are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.1.1] — 2026-06-22
+
+### Fixed
+
+- **Packaging: declare the `libcap` dependency.** The post-install scripts run
+  `setcap cap_net_admin+ep` to grant the `CAP_NET_ADMIN` akon needs to create the
+  TUN device. `setcap` was not declared as a package dependency, so on a host
+  without it the install only printed a warning and akon silently failed to
+  connect until libcap was installed manually. The `.deb` now depends on
+  `libcap2-bin` and the `.rpm` requires `libcap`, so the package manager pulls it
+  in automatically.
+
 ## [2.1.0] — 2026-06-22
 
 Reliability and UX hardening for the native F5 client. No breaking changes;
