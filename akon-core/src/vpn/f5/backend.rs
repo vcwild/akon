@@ -748,7 +748,7 @@ async fn run_data_plane(
     // the supervisor/CLI reacts, instead of silently leaving a dead tunnel
     // (the production "looks connected but everything hangs" bug).
     if let Err(e) = tun.configure(&session.tun_config).await {
-        eprintln!("[tun-cfg] ERROR: interface configuration failed: {e}");
+        crate::vpn::f5::http::debug_log!("[tun-cfg] ERROR: interface configuration failed: {e}");
         let _ = tx.send(LifecycleEvent::Failed {
             kind: FailureKind::Network,
             detail: format!("failed to configure tunnel interface: {e}"),
@@ -772,9 +772,11 @@ async fn run_data_plane(
         match dns.apply(&session.device, &session.tun_config) {
             Ok(()) => {
                 if crate::vpn::f5::http::debug_enabled() {
-                    eprintln!(
+                    crate::vpn::f5::http::debug_log!(
                         "[dns] applied: servers={:?} domains={:?} on {}",
-                        session.tun_config.dns, session.tun_config.domains, session.device
+                        session.tun_config.dns,
+                        session.tun_config.domains,
+                        session.device
                     );
                 }
                 if dns.mutates_host() {
@@ -783,7 +785,9 @@ async fn run_data_plane(
             }
             Err(e) => {
                 // Always visible: DNS failure means VPN-only names won't resolve.
-                eprintln!("[dns] WARNING: failed to apply VPN DNS: {e} — names may not resolve")
+                crate::vpn::f5::http::debug_log!(
+                    "[dns] WARNING: failed to apply VPN DNS: {e} — names may not resolve"
+                )
             }
         }
     }
@@ -833,6 +837,7 @@ async fn pump_packets(
     magic: u32,
 ) -> crate::vpn::backend::DisconnectReason {
     use crate::vpn::backend::DisconnectReason;
+    use crate::vpn::f5::http::debug_log;
     let mut tun_buf = vec![0u8; 4096];
     let mut net_buf = vec![0u8; 4096];
     let debug = crate::vpn::f5::http::debug_enabled();
@@ -861,10 +866,10 @@ async fn pump_packets(
                     );
                     let wire = f5_encap(&crate::vpn::f5::ppp::build_ncp_frame(&echo));
                     if debug {
-                        eprintln!("[f5-data] keepalive: sent LCP Echo-Request #{ka_id}");
+                        debug_log!("[f5-data] keepalive: sent LCP Echo-Request #{ka_id}");
                     }
                     if transport.send(&wire).await.is_err() {
-                        eprintln!("[f5-data] tunnel ended: keepalive send failed");
+                        debug_log!("[f5-data] tunnel ended: keepalive send failed");
                         return DisconnectReason::ServerClosed;
                     }
                 }
@@ -875,13 +880,13 @@ async fn pump_packets(
             r = tun.read_packet(&mut tun_buf) => {
                 match r {
                     Ok(0) | Err(_) => {
-                        eprintln!("[f5-data] tunnel ended: TUN device closed");
+                        debug_log!("[f5-data] tunnel ended: TUN device closed");
                         return DisconnectReason::ServerClosed;
                     }
                     Ok(n) => {
                         out_pkts += 1;
                         if debug {
-                            eprintln!(
+                            debug_log!(
                                 "[f5-data] OS->tun #{out_pkts}: {n} bytes {}",
                                 hex_preview(&tun_buf[..n], 20)
                             );
@@ -889,7 +894,7 @@ async fn pump_packets(
                         let ppp_frame = wrap_ip_in_ppp(&tun_buf[..n]);
                         let wire = f5_encap(&ppp_frame);
                         if transport.send(&wire).await.is_err() {
-                            eprintln!("[f5-data] tunnel ended: transport send failed");
+                            debug_log!("[f5-data] tunnel ended: transport send failed");
                             return DisconnectReason::ServerClosed;
                         }
                     }
@@ -903,7 +908,7 @@ async fn pump_packets(
                         // The server closed the tunnel TLS connection (or it
                         // errored). This is the common "server dropped the
                         // tunnel" case; log it so the reconnect cause is visible.
-                        eprintln!("[f5-data] tunnel ended: server closed the connection");
+                        debug_log!("[f5-data] tunnel ended: server closed the connection");
                         return DisconnectReason::ServerClosed;
                     }
                     Ok(n) => {

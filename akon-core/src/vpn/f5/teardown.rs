@@ -82,17 +82,23 @@ pub fn teardown_host(plan: &HostTeardownPlan) -> TeardownReport {
     //    rootless. resolved also auto-reverts when the link disappears; we do it
     //    explicitly for resolvconf hosts and to flush caches.
     if let Some(iface) = &plan.dns_iface {
+        // Use `.output()` (not `.status()`) so the child's stderr is captured,
+        // not echoed to our terminal: when the tun link is already gone (e.g.
+        // teardown replay after SIGKILL, or the link was removed first) resolved
+        // prints `Failed to resolve interface "tunN": No such device`. That is
+        // benign — resolved auto-reverts DNS when the link disappears — so we
+        // swallow the noise rather than surface a scary line to the user.
         let reverted = Command::new("resolvectl")
             .args(["revert", iface])
-            .status()
-            .map(|s| s.success())
+            .output()
+            .map(|o| o.status.success())
             .unwrap_or(false);
         if reverted {
             report.actions.push(format!("reverted DNS on {iface}"));
         }
-        // resolvconf fallback (no-op if not present).
-        let _ = Command::new("resolvconf").args(["-d", iface]).status();
-        let _ = Command::new("resolvectl").arg("flush-caches").status();
+        // resolvconf fallback (no-op if not present); also output-captured.
+        let _ = Command::new("resolvconf").args(["-d", iface]).output();
+        let _ = Command::new("resolvectl").arg("flush-caches").output();
         report.actions.push("flushed DNS caches".to_string());
     }
 
@@ -262,12 +268,37 @@ mod tests {
             device: Some("akon-nope0".into()),
             extra_routes: vec!["192.0.2.123/32".into()],
             rp_filter_restore: vec![],
-            dns_iface: None,
+            // A bogus DNS interface: reverting it makes `resolvectl` emit
+            // `Failed to resolve interface "akon-nope0": No such device`. The
+            // fix captures the child's output (`.output()`), so this must NOT
+            // surface to our terminal — and teardown must still record the
+            // cache flush and never panic.
+            dns_iface: Some("akon-nope0".into()),
         };
         // Twice, to prove idempotency. Either it cleanly no-ops (resource
         // already absent) or warns — but never panics, and the second run is
         // identical to the first.
-        let _ = teardown_host(&plan);
-        let _ = teardown_host(&plan);
+        let first = teardown_host(&plan);
+        let second = teardown_host(&plan);
+        // DNS branch always runs the flush (best-effort) and never warns about
+        // the missing interface — the revert noise is swallowed, not surfaced.
+        assert!(
+            first.actions.iter().any(|a| a.contains("flushed DNS")),
+            "DNS teardown should always flush caches: {:?}",
+            first.actions
+        );
+        assert!(
+            !first
+                .warnings
+                .iter()
+                .any(|w| w.contains("No such device") || w.contains("resolve interface")),
+            "missing DNS interface must not produce a warning: {:?}",
+            first.warnings
+        );
+        assert_eq!(
+            first.actions.contains(&"flushed DNS caches".to_string()),
+            second.actions.contains(&"flushed DNS caches".to_string()),
+            "teardown must be idempotent across runs"
+        );
     }
 }
