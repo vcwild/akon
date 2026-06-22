@@ -827,10 +827,11 @@ const DATA_LOG_EVERY: u64 = 500;
 /// exit). Returns the reason the pump stopped: `UserRequested` if `disconnect`
 /// signalled shutdown, otherwise `ServerClosed` (transport/TUN ended).
 ///
-/// Sends a periodic PPP keepalive (Echo-Request carrying `magic`) so the F5
-/// server's DPD does not expire and tear down the tunnel. The keepalive is
-/// skipped for any interval in which real outbound data was sent (data already
-/// refreshes the server's peer-liveness), mirroring openconnect.
+/// Keeps the tunnel alive against the F5 server's dead-peer-detection by
+/// REPLYING to the server's LCP Echo-Requests with an Echo-Reply carrying
+/// `magic`. The server polls (~every 30 s) and tears the tunnel down after a
+/// few unanswered (~149 s); answering is the only liveness signal it waits on,
+/// so akon does not proactively ping (`out_pkts` is throughput logging only).
 async fn pump_packets(
     transport: &mut dyn Transport,
     tun: &mut dyn TunDevice,

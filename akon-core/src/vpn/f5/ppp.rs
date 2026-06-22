@@ -350,10 +350,13 @@ pub fn lcp_echo_reply(id: u8, magic: u32, data: &[u8]) -> NcpPacket {
     }
 }
 
-/// Build an LCP Echo-Request carrying our magic number (used as a client-side
-/// keepalive / DPD so the F5 server does not consider us dead and tear down the
-/// tunnel). The peer may answer with an Echo-Reply; we send these proactively to
-/// refresh the server's peer-liveness, mirroring openconnect's `KA_DPD`.
+/// Build an LCP Echo-Request carrying our magic number.
+///
+/// akon keeps the tunnel alive by REPLYING to the server's Echo-Requests (see
+/// `lcp_echo_reply` and `pump_packets`), not by pinging proactively, so no
+/// production path currently sends this. It is retained to construct
+/// Echo-Request frames in tests (and as the building block should a proactive
+/// client-side DPD sender, like openconnect's `KA_DPD`, ever be needed).
 pub fn lcp_echo_request(id: u8, magic: u32, data: &[u8]) -> NcpPacket {
     let mut payload = magic.to_be_bytes().to_vec();
     payload.extend_from_slice(data);

@@ -2,9 +2,20 @@
 
 **Feature Branch**: `011-ppp-keepalive-dpd`
 **Created**: 2026-06-22
-**Status**: Draft
+**Status**: Implemented (reply-only) — see Resolution below
 **Input**: User observation: the F5 VPN server drops the tunnel about every ~2.5
 minutes; we want to know why and make it happen less often.
+
+> **Resolution (shipped 2.1.0): reply-only, no proactive sender.**
+> The original hypothesis below (mirror openconnect and *send* periodic
+> Echo-Requests) was implemented, soak-tested, and found insufficient: the F5
+> server kept dropping at ~149 s even with client keepalives every 20 s, because
+> the data plane was *ignoring the server's own Echo-Requests*. The server's DPD
+> is satisfied solely by our **Echo-Reply** to its **Echo-Request** (it polls
+> ~every 30 s). akon now answers those and the tunnel stays up indefinitely
+> (verified by live soak: 13 consecutive polls answered, zero drops). The
+> proactive sender was removed (YAGNI); requirements that mandated it are
+> annotated **[Superseded]** below.
 
 ## Overview
 
@@ -85,28 +96,32 @@ valid PPP control frames that the peer accepts.
 
 ### Functional Requirements
 
-- **FR-001**: During the data-plane phase, akon MUST send a periodic PPP
-  keepalive to the server (LCP `Echo-Request` as DPD and/or `Discard-Request`),
-  mirroring openconnect, so the server's DPD does not expire.
-- **FR-002**: The keepalive interval MUST be safely below the server's DPD
-  tolerance (default ~20–30 s; well under the observed ~150 s drop).
-- **FR-003**: When real outbound data is flowing, akon MAY skip the explicit
-  keepalive for that interval (data already refreshes the server's liveness),
-  matching openconnect.
-- **FR-004**: Sending keepalives MUST NOT block or starve packet forwarding in
-  either direction; it must be interleaved with the pump's I/O.
-- **FR-005**: Replying to server `Echo-Request` with `Echo-Reply` MUST continue
-  to work (no regression).
-- **FR-006**: A keepalive send failure MUST be treated like a tunnel drop (pump
-  exits, supervisor reconnects) — no silent stall.
-- **FR-007**: The keepalive frames MUST be valid PPP LCP control frames
+- **FR-001 [Superseded]**: ~~akon MUST send a periodic PPP keepalive…~~ Replaced
+  by **FR-001'**: During the data-plane phase, akon MUST **reply** to the
+  server's LCP `Echo-Request` with an `Echo-Reply` (carrying the negotiated
+  magic) so the server's DPD does not expire. (Sending was found unnecessary —
+  see Resolution.)
+- **FR-002 [Superseded]**: A client keepalive interval is moot — akon does not
+  send keepalives; it answers the server's polls (~every 30 s) as they arrive.
+- **FR-003 [Superseded]**: The "skip when data is flowing" optimization was the
+  bug that made the proactive sender never fire under real traffic; not
+  applicable to the reply-only design.
+- **FR-004**: Replying MUST NOT block or starve packet forwarding in either
+  direction; it is interleaved with the pump's I/O (the reply is sent inline on
+  the same transport when an Echo-Request is received).
+- **FR-005**: Replying to server `Echo-Request` with `Echo-Reply` is now the
+  primary liveness mechanism (was: "must continue to work").
+- **FR-006**: An echo-reply send failure MUST be treated like a tunnel drop
+  (pump exits, supervisor reconnects) — no silent stall.
+- **FR-007**: The `Echo-Reply` frames MUST be valid PPP LCP control frames
   (correct code, id, magic) accepted by the F5 peer.
 
 ### Key Entities
 
-- **Keepalive timer**: drives periodic keepalive emission during the data plane.
-- **PPP LCP control frame**: `Echo-Request` (DPD) / `Discard-Request` (keepalive)
-  carrying the negotiated magic number.
+- **Server Echo-Request**: the F5 appliance's DPD poll (~every 30 s); the trigger
+  akon reacts to.
+- **PPP LCP `Echo-Reply`**: akon's response, carrying the negotiated magic number
+  — the liveness signal the server's DPD waits on.
 
 ## Success Criteria *(mandatory)*
 
@@ -114,8 +129,9 @@ valid PPP control frames that the peer accepts.
 
 - **SC-001**: A live session stays connected for ≥ 15 minutes with **no
   server-initiated drops** (vs. the prior ~2.5-minute drop cadence).
-- **SC-002**: With no user traffic, akon emits a keepalive at the configured
-  interval (verifiable offline against a fake peer).
+- **SC-002**: When the server sends an `Echo-Request`, akon replies with an
+  `Echo-Reply` (verifiable offline against a fake peer — see
+  `pump_replies_to_server_echo_request`).
 - **SC-003**: The data-plane round-trip test remains green with keepalives
   enabled (no forwarding regression).
 - **SC-004**: Server `Echo-Request` → `Echo-Reply` still works (no regression).
