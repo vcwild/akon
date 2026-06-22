@@ -30,6 +30,9 @@ automatic reconnection and health checks. It runs as the user; only TUN/route
 setup needs CAP_NET_ADMIN (granted via `setcap cap_net_admin+ep`)."""
 section = "net"
 priority = "optional"
+# setcap (from libcap2-bin) is required by the post-install script to grant
+# CAP_NET_ADMIN; without it akon cannot create the TUN device.
+depends = "libcap2-bin"
 assets = [
     ["target/release/akon", "usr/bin/", "755"],
     ["README.md", "usr/share/doc/akon/", "644"],
@@ -40,6 +43,9 @@ maintainer-scripts = "debian/"
 
 # RPM package metadata for cargo-generate-rpm
 [package.metadata.generate-rpm]
+# setcap (from libcap) is required by the post-install script to grant
+# CAP_NET_ADMIN; without it akon cannot create the TUN device.
+requires = { libcap = "*" }
 assets = [
     { source = "target/release/akon", dest = "/usr/bin/akon", mode = "755" },
     { source = "README.md", dest = "/usr/share/doc/akon/README.md", mode = "644" },
