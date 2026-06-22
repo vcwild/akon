@@ -11,21 +11,30 @@ after we get a stale tunnel interface."
 A connected native VPN session goes **stale after ~3 minutes**: the tunnel
 interface disappears and `akon vpn status` reports "inactive (stale)".
 
-Root cause (two compounding bugs in the in-process supervisor):
+Root cause (confirmed from a live debug soak log):
 
-1. **Stale one-time OTP reused on reconnect.** In background mode the parent
-   generates a PIN+OTP once and passes it to the child via the
-   `AKON_VPN_PASSWORD` environment variable. The child reuses that **same** value
-   for every reconnection attempt. TOTP codes expire within 30–60 s, so any
-   reconnect minutes later authenticates with an **expired OTP** and fails.
+0. **The supervisor never reacts to the tunnel dying (PRIMARY).** The F5 server
+   periodically closes the tunnel's TLS connection (observed: traffic flowing,
+   then a silent `transport.recv` EOF). The data-plane pump exits **silently**,
+   `graceful_teardown` fires (`GET /vdesk/hangup.php3`), the backend marks itself
+   not-alive, and the TUN interface is dropped. But `native_supervise` is asleep
+   in its `health_check_interval_secs` timer (60 s) and **only polls an external
+   HTTP endpoint** — it never observes that the backend already died. So the tun
+   is gone for up to a full interval with no reconnect = **stale tunnel
+   interface** after a few minutes. The log shows the hangup with NO preceding
+   reconnect/health/disconnect message, and the journal confirms **no reconnect
+   was ever attempted**.
 
-2. **A failed reconnect leaves no tunnel.** The supervisor calls
-   `disconnect()` (which removes the tun interface) *before* attempting to
-   reconnect. With `health_check_interval_secs = 60` and
-   `consecutive_failures_threshold = 1`, a single transient health-check failure
-   around the 2nd–3rd interval (~120–180 s ≈ **3 minutes**) tears down the
-   working tunnel; the reconnect then fails (bug 1) and the user is left with a
-   **stale, gone interface**.
+1. **Stale one-time OTP reused on reconnect (SECONDARY).** In background mode the
+   parent generates a PIN+OTP once and passes it via `AKON_VPN_PASSWORD`; the
+   child reused that **same** value for every reconnect. TOTP codes expire within
+   30–60 s, so a reconnect minutes later would authenticate with an **expired
+   OTP** and fail — meaning even if the supervisor *did* react, recovery would
+   fail. (Already fixed: reconnects regenerate a fresh OTP.)
+
+2. **Silent failure.** The pump's exit paths (`Ok(0) | Err(_) => return`) log
+   nothing, so a server-side drop is invisible — the user just sees the VPN go
+   stale with no explanation.
 
 The fix: always authenticate reconnects with a **freshly generated** OTP (never
 reuse the one-shot env value), and make the supervisor resilient so a transient
@@ -98,6 +107,10 @@ tunnel).
 
 ### Functional Requirements
 
+- **FR-000 (PRIMARY)**: The supervisor MUST detect that the in-process backend's
+  data plane has stopped (the tunnel dropped) **promptly** — not only on the
+  next health-check tick — and trigger reconnection. A server-initiated tunnel
+  close MUST NOT leave the user stale for up to a full health-check interval.
 - **FR-001**: Reconnection attempts MUST authenticate with a **freshly generated**
   PIN+OTP, never a reused one-time value. The `AKON_VPN_PASSWORD` env value MUST
   be used for the **initial** connect only, not for reconnects.
@@ -115,6 +128,8 @@ tunnel).
 - **FR-006**: The credential regeneration MUST read from the keyring (the
   rootless path runs as the user with keyring access); it MUST NOT log secrets.
 - **FR-007**: Behaviour MUST be identical between foreground and background modes.
+- **FR-008**: A tunnel drop / data-plane exit MUST be logged (visibly, not
+  silently) so the cause of a reconnect is observable.
 
 ### Key Entities
 

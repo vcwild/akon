@@ -329,7 +329,7 @@ impl VpnBackend for NativeF5Backend {
             };
 
             // --- Data plane: pump packets until disconnect or transport EOF ---
-            run_data_plane(
+            let reason = run_data_plane(
                 transport.as_mut(),
                 tun.as_mut(),
                 dns.as_mut(),
@@ -344,9 +344,10 @@ impl VpnBackend for NativeF5Backend {
             graceful_teardown(transport.as_mut(), &host, &session).await;
 
             shared.lock().expect("poisoned").alive = false;
-            let _ = tx.send(LifecycleEvent::Disconnected {
-                reason: crate::vpn::backend::DisconnectReason::UserRequested,
-            });
+            // Emit the ACTUAL reason: UserRequested (we called disconnect) vs
+            // ServerClosed (the tunnel dropped on its own). The supervisor uses
+            // this to decide whether to reconnect.
+            let _ = tx.send(LifecycleEvent::Disconnected { reason });
         });
 
         Ok(rx)
@@ -737,7 +738,7 @@ async fn run_data_plane(
     tx: &UnboundedSender<LifecycleEvent>,
     shared: &Arc<Mutex<Shared>>,
     shutdown: &Arc<Notify>,
-) {
+) -> crate::vpn::backend::DisconnectReason {
     // Configure the OS interface with the negotiated parameters. This is the
     // step that actually makes the tunnel usable (address, MTU, routes). If it
     // fails we must NOT pretend to be connected: surface a `Failed` event so
@@ -749,7 +750,7 @@ async fn run_data_plane(
             kind: FailureKind::Network,
             detail: format!("failed to configure tunnel interface: {e}"),
         });
-        return;
+        return crate::vpn::backend::DisconnectReason::ServerClosed;
     }
 
     // Capture the host-teardown plan now that `configure` has recorded the
@@ -802,17 +803,22 @@ async fn run_data_plane(
         device: session.device.clone(),
     });
 
-    // Run the pump until it exits, then always revert DNS.
-    pump_packets(transport, tun, shutdown).await;
+    // Run the pump until it exits, then always revert DNS. The exit reason tells
+    // the caller whether WE requested the disconnect or the tunnel dropped.
+    let reason = pump_packets(transport, tun, shutdown).await;
     let _ = dns.revert(&session.device);
+    reason
 }
 
-/// The inner packet-forwarding loop (separated so DNS revert always runs on exit).
+/// The inner packet-forwarding loop (separated so DNS revert always runs on
+/// exit). Returns the reason the pump stopped: `UserRequested` if `disconnect`
+/// signalled shutdown, otherwise `ServerClosed` (transport/TUN ended).
 async fn pump_packets(
     transport: &mut dyn Transport,
     tun: &mut dyn TunDevice,
     shutdown: &Arc<Notify>,
-) {
+) -> crate::vpn::backend::DisconnectReason {
+    use crate::vpn::backend::DisconnectReason;
     let mut tun_buf = vec![0u8; 4096];
     let mut net_buf = vec![0u8; 4096];
     let debug = crate::vpn::f5::http::debug_enabled();
@@ -820,12 +826,15 @@ async fn pump_packets(
 
     loop {
         tokio::select! {
-            _ = shutdown.notified() => return,
+            _ = shutdown.notified() => return DisconnectReason::UserRequested,
 
             // OS -> tunnel
             r = tun.read_packet(&mut tun_buf) => {
                 match r {
-                    Ok(0) | Err(_) => return,
+                    Ok(0) | Err(_) => {
+                        eprintln!("[f5-data] tunnel ended: TUN device closed");
+                        return DisconnectReason::ServerClosed;
+                    }
                     Ok(n) => {
                         out_pkts += 1;
                         if debug {
@@ -837,7 +846,8 @@ async fn pump_packets(
                         let ppp_frame = wrap_ip_in_ppp(&tun_buf[..n]);
                         let wire = f5_encap(&ppp_frame);
                         if transport.send(&wire).await.is_err() {
-                            return;
+                            eprintln!("[f5-data] tunnel ended: transport send failed");
+                            return DisconnectReason::ServerClosed;
                         }
                     }
                 }
@@ -846,7 +856,13 @@ async fn pump_packets(
             // tunnel -> OS
             r = transport.recv(&mut net_buf) => {
                 match r {
-                    Ok(0) | Err(_) => return,
+                    Ok(0) | Err(_) => {
+                        // The server closed the tunnel TLS connection (or it
+                        // errored). This is the common "server dropped the
+                        // tunnel" case; log it so the reconnect cause is visible.
+                        eprintln!("[f5-data] tunnel ended: server closed the connection");
+                        return DisconnectReason::ServerClosed;
+                    }
                     Ok(n) => {
                         if let Ok(frames) = f5_decap(&net_buf[..n]) {
                             for ppp in frames {

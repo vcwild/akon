@@ -137,9 +137,7 @@ async fn run_vpn_on_native(
     state_path: &std::path::Path,
     reconnection: Option<akon_core::vpn::reconnection::ReconnectionPolicy>,
 ) -> Result<(), AkonError> {
-    use akon_core::vpn::backend::VpnBackend;
-
-    let mut backend = native_connect_once(config, state_path, true).await?;
+    let (mut backend, mut events) = native_connect_once(config, state_path, true).await?;
 
     println!(
         "\n   {} {} to disconnect",
@@ -147,22 +145,35 @@ async fn run_vpn_on_native(
         "Ctrl-C".bright_cyan()
     );
 
-    // Ctrl-C MUST always win, even mid-reconnect, so race the whole supervision
-    // future against the signal at the top level.
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            println!("\n{} Disconnecting (Ctrl-C)...", "[..]".bright_yellow());
-        }
-        _ = async {
-            if let Some(policy) = reconnection {
-                native_supervise(config, state_path, &policy, &mut backend).await;
-            } else {
-                std::future::pending::<()>().await;
+    // Supervise the connection. With a reconnection policy we run the full
+    // event-driven supervisor (reacts to drops immediately + health checks).
+    // Without a policy we still watch the event stream so we exit promptly when
+    // the tunnel drops (rather than hanging on a dead tunnel). Ctrl-C always wins.
+    if let Some(policy) = reconnection {
+        native_supervise(config, state_path, &policy, &mut backend, &mut events).await;
+    } else {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                println!("\n{} Disconnecting (Ctrl-C)...", "[..]".bright_yellow());
             }
-        } => {}
+            _ = async {
+                // Drain events; exit when the backend disconnects/fails or the
+                // stream closes (no reconnection configured).
+                loop {
+                    match events.recv().await {
+                        Some(akon_core::vpn::backend::LifecycleEvent::Disconnected { .. })
+                        | Some(akon_core::vpn::backend::LifecycleEvent::Failed { .. })
+                        | None => break,
+                        Some(_) => {}
+                    }
+                }
+            } => {
+                println!("\n{} VPN connection ended", "[..]".bright_yellow());
+            }
+        }
     }
 
-    let _ = backend.disconnect();
+    let _ = akon_core::vpn::backend::VpnBackend::disconnect(&mut backend);
     // Give the in-process data-plane task a moment to drop the TUN + restore
     // routes before the process exits.
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -202,7 +213,13 @@ async fn native_connect_once(
     config: &akon_core::config::VpnConfig,
     state_path: &std::path::Path,
     initial: bool,
-) -> Result<akon_core::vpn::f5::NativeF5Backend, AkonError> {
+) -> Result<
+    (
+        akon_core::vpn::f5::NativeF5Backend,
+        tokio::sync::mpsc::UnboundedReceiver<akon_core::vpn::backend::LifecycleEvent>,
+    ),
+    AkonError,
+> {
     use akon_core::vpn::backend::{Credentials, LifecycleEvent, VpnBackend};
     use akon_core::vpn::f5::NativeF5Backend;
 
@@ -243,7 +260,10 @@ async fn native_connect_once(
         })
     })?;
 
-    while let Some(event) = events.recv().await {
+    loop {
+        let Some(event) = events.recv().await else {
+            break;
+        };
         info!("native lifecycle: {:?}", event);
         match event {
             LifecycleEvent::Authenticating => {
@@ -288,7 +308,10 @@ async fn native_connect_once(
                     );
                 }
 
-                return Ok(backend);
+                // Hand back the live event receiver so the supervisor can react
+                // to Disconnected/Failed events immediately (event-driven, not
+                // polling).
+                return Ok((backend, events));
             }
             LifecycleEvent::Failed { kind, detail } => {
                 error!("native F5 connection failed: {:?}: {}", kind, detail);
@@ -318,77 +341,135 @@ async fn native_connect_once(
 
 /// In-process health-monitored supervision loop.
 ///
-/// Periodically runs an HTTP health check; after `consecutive_failures_threshold`
-/// failures it tears down and re-establishes the connection (up to `max_attempts`
-/// with exponential backoff). Exits cleanly on Ctrl-C.
+/// **Event-driven** supervision. Reacts immediately to the backend's lifecycle
+/// events — a `Disconnected { ServerClosed }` or `Failed` (the tunnel dropped on
+/// its own) triggers an instant reconnect, rather than waiting for a polling
+/// tick. A periodic HTTP health check is an additional safety net for *silent*
+/// failures (a tunnel that's up but not carrying traffic). Reconnects use a
+/// fresh OTP and swap in the new backend + its event stream. Exits on Ctrl-C or
+/// a user-requested disconnect.
 #[cfg(target_os = "linux")]
 async fn native_supervise(
     config: &akon_core::config::VpnConfig,
     state_path: &std::path::Path,
     policy: &akon_core::vpn::reconnection::ReconnectionPolicy,
     backend: &mut akon_core::vpn::f5::NativeF5Backend,
+    events: &mut tokio::sync::mpsc::UnboundedReceiver<akon_core::vpn::backend::LifecycleEvent>,
 ) {
-    use akon_core::vpn::backend::VpnBackend;
+    use akon_core::vpn::backend::LifecycleEvent;
     use akon_core::vpn::health_check::HealthChecker;
 
-    let checker = match HealthChecker::new(
+    let checker = HealthChecker::new(
         policy.health_check_endpoint.clone(),
         Duration::from_secs(10),
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("invalid health-check endpoint, supervision disabled: {e}");
-            let _ = tokio::signal::ctrl_c().await;
-            return;
-        }
-    };
+    )
+    .ok();
+    if checker.is_none() {
+        warn!("invalid health-check endpoint; relying on lifecycle events only");
+    }
 
     let interval = Duration::from_secs(policy.health_check_interval_secs.max(1));
     let mut consecutive_failures = 0u32;
 
     loop {
-        tokio::select! {
+        // Wait for the FIRST of: a lifecycle event (immediate reaction), the
+        // health-check interval elapsing, or Ctrl-C.
+        let trigger = tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 info!("Ctrl-C received, stopping native supervision");
                 return;
             }
-            _ = tokio::time::sleep(interval) => {}
-        }
+            ev = events.recv() => SuperviseTrigger::Event(ev),
+            _ = tokio::time::sleep(interval) => SuperviseTrigger::HealthTick,
+        };
 
-        let result = checker.check().await;
-        if result.is_success() {
-            consecutive_failures = 0;
-            debug!("native health check OK");
+        let need_reconnect = match trigger {
+            // --- React to a lifecycle event from the backend ---
+            SuperviseTrigger::Event(Some(LifecycleEvent::Disconnected { reason })) => {
+                if reason.is_user_requested() {
+                    info!("backend disconnected at user request; stopping supervision");
+                    return;
+                }
+                warn!("tunnel dropped (server closed); reconnecting immediately");
+                println!(
+                    "{} {}",
+                    "[RECONNECT]".bright_yellow(),
+                    "Tunnel dropped, reconnecting...".bright_yellow()
+                );
+                true
+            }
+            SuperviseTrigger::Event(Some(LifecycleEvent::Failed { kind, detail })) => {
+                warn!("backend failed ({kind:?}: {detail}); reconnecting");
+                println!(
+                    "{} {}",
+                    "[RECONNECT]".bright_yellow(),
+                    "Connection failed, reconnecting...".bright_yellow()
+                );
+                true
+            }
+            // The event stream closed (sender dropped) → backend is gone.
+            SuperviseTrigger::Event(None) => {
+                warn!("backend event stream closed; reconnecting");
+                true
+            }
+            // Other events (LinkUp, etc.) — keep watching.
+            SuperviseTrigger::Event(Some(_)) => false,
+
+            // --- Periodic health check (safety net for silent failures) ---
+            SuperviseTrigger::HealthTick => {
+                if let Some(checker) = &checker {
+                    if checker.check().await.is_success() {
+                        consecutive_failures = 0;
+                        debug!("native health check OK");
+                        false
+                    } else {
+                        consecutive_failures += 1;
+                        warn!(
+                            "native health check failed ({}/{})",
+                            consecutive_failures, policy.consecutive_failures_threshold
+                        );
+                        if consecutive_failures >= policy.consecutive_failures_threshold {
+                            println!(
+                                "{} {}",
+                                "[RECONNECT]".bright_yellow(),
+                                "Connection unhealthy, reconnecting...".bright_yellow()
+                            );
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            }
+        };
+
+        if !need_reconnect {
             continue;
         }
 
-        consecutive_failures += 1;
-        warn!(
-            "native health check failed ({}/{})",
-            consecutive_failures, policy.consecutive_failures_threshold
-        );
-        if consecutive_failures < policy.consecutive_failures_threshold {
-            continue;
-        }
-
-        // Reconnect with exponential backoff.
-        println!(
-            "{} {}",
-            "[RECONNECT]".bright_yellow(),
-            "Connection unhealthy, reconnecting...".bright_yellow()
-        );
-        let _ = backend.disconnect();
+        // --- Reconnect with exponential backoff, fresh OTP, new event stream ---
+        let _ = akon_core::vpn::backend::VpnBackend::disconnect(backend);
 
         let mut delay: u64 = policy.base_interval_secs.max(1) as u64;
         let max_delay: u64 = policy.max_interval_secs.max(1) as u64;
         let multiplier: u64 = policy.backoff_multiplier.max(1) as u64;
         let mut reconnected = false;
         for attempt in 1..=policy.max_attempts {
-            tokio::time::sleep(Duration::from_secs(delay)).await;
+            // Allow Ctrl-C to interrupt the backoff wait.
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Ctrl-C during reconnect backoff; stopping");
+                    return;
+                }
+                _ = tokio::time::sleep(Duration::from_secs(delay)) => {}
+            }
             // initial = false: regenerate a fresh OTP for every reconnect.
             match native_connect_once(config, state_path, false).await {
-                Ok(new_backend) => {
+                Ok((new_backend, new_events)) => {
                     *backend = new_backend;
+                    *events = new_events;
                     consecutive_failures = 0;
                     reconnected = true;
                     info!("native reconnection succeeded on attempt {attempt}");
@@ -409,13 +490,17 @@ async fn native_supervise(
                 "Reconnection failed after all attempts".bright_red()
             );
             // Fail-safe: leave no half-configured tunnel and make status honest.
-            // The tunnel was already torn down before the (failed) attempts; clear
-            // the session record so `akon vpn status` reports not-connected rather
-            // than a misleading stale interface.
             let _ = std::fs::remove_file(state_path);
             return;
         }
     }
+}
+
+/// What woke the supervisor's select loop.
+#[cfg(target_os = "linux")]
+enum SuperviseTrigger {
+    Event(Option<akon_core::vpn::backend::LifecycleEvent>),
+    HealthTick,
 }
 
 #[cfg(not(target_os = "linux"))]
