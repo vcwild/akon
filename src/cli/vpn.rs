@@ -590,19 +590,138 @@ async fn run_vpn_off_native(
     Ok(())
 }
 
+/// The session metadata read from the state file (a snapshot of the connection
+/// state machine). The tunnel interface is the authoritative "connected" signal;
+/// these are the supporting details for display.
+#[derive(Debug, Default, Clone)]
+struct StatusRecord {
+    device: Option<String>,
+    ip: Option<String>,
+    connected_at: Option<String>,
+    pid: Option<u64>,
+}
+
+impl StatusRecord {
+    fn from_json(v: &serde_json::Value) -> Self {
+        Self {
+            device: v.get("device").and_then(|d| d.as_str()).map(String::from),
+            ip: v.get("ip").and_then(|d| d.as_str()).map(String::from),
+            connected_at: v
+                .get("connected_at")
+                .and_then(|d| d.as_str())
+                .map(String::from),
+            pid: v.get("pid").and_then(|p| p.as_u64()),
+        }
+    }
+}
+
+/// The verdict produced by reconciling the session record against ground truth.
+#[derive(Debug, PartialEq, Eq)]
+enum StatusVerdict {
+    /// A tunnel for the recorded session exists. `ip` is the live address when
+    /// available, else the recorded one.
+    Connected {
+        device: String,
+        ip: Option<String>,
+        connected_at: Option<String>,
+    },
+    /// A session is recorded but its tunnel interface is gone.
+    Stale {
+        reason: &'static str,
+        ip: Option<String>,
+    },
+    /// No session recorded.
+    NotConnected,
+}
+
+/// Pure status decision: reconcile the (optional) session record against the
+/// ground-truth `interface_present` and a live interface IP. The supervising PID
+/// is intentionally NOT an input — the tunnel interface is authoritative.
+fn evaluate_status(
+    record: Option<&StatusRecord>,
+    interface_present: bool,
+    live_ip: Option<String>,
+) -> StatusVerdict {
+    let Some(rec) = record else {
+        return StatusVerdict::NotConnected;
+    };
+    match &rec.device {
+        None => StatusVerdict::Stale {
+            reason: "no tunnel device recorded",
+            ip: rec.ip.clone(),
+        },
+        Some(_) if !interface_present => StatusVerdict::Stale {
+            reason: "tunnel interface no longer present",
+            ip: rec.ip.clone(),
+        },
+        Some(device) => StatusVerdict::Connected {
+            device: device.clone(),
+            ip: live_ip.or_else(|| rec.ip.clone()),
+            connected_at: rec.connected_at.clone(),
+        },
+    }
+}
+
+/// Whether the recorded tunnel interface currently exists (ground truth).
+fn tunnel_interface_present(device: &str) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        akon_core::vpn::f5::netlink::interface_exists(device)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = device;
+        false
+    }
+}
+
+/// The live IPv4 currently assigned to the recorded tunnel interface, if any.
+fn tunnel_interface_ipv4(device: &str) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        akon_core::vpn::f5::netlink::interface_ipv4(device).map(|ip| ip.to_string())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = device;
+        None
+    }
+}
+
+/// Whether a given PID is currently running (advisory only).
+fn pid_running(pid: u64) -> bool {
+    std::process::Command::new("ps")
+        .args(["-p", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn print_status_header() {
+    println!(
+        "{} {} - {}",
+        "●".bright_green(),
+        "akon-vpn".bright_white().bold(),
+        "Akon VPN Connection".bright_white()
+    );
+}
+
 /// Show VPN connection status (`akon vpn status`).
+///
+/// The native backend runs the VPN **in-process**, so "connected" is decided by
+/// the existence of the session's **tunnel interface** (the kernel's truth), not
+/// by whether a recorded PID is alive. The state file is a snapshot of the
+/// connection state machine used to look up the device and display metadata.
 pub fn run_vpn_status() -> Result<(), AkonError> {
     use chrono::{DateTime, Utc};
 
     let state_path = state_file_path();
 
+    // No state file -> NotConnected (exit 1).
     if !state_path.exists() {
-        println!(
-            "{} {} - {}",
-            "●".bright_red(),
-            "akon-vpn".bright_white().bold(),
-            "Akon VPN Connection".bright_white()
-        );
+        print_status_header();
         println!(
             "    {} {} ({})",
             "Active:".bright_white(),
@@ -623,128 +742,203 @@ pub fn run_vpn_status() -> Result<(), AkonError> {
         })
     })?;
 
-    // Verify the supervising process is still running.
-    let pid = state.get("pid").and_then(|p| p.as_u64());
-    let process_running = if let Some(pid_num) = pid {
-        std::process::Command::new("ps")
-            .args(["-p", &pid_num.to_string()])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    } else {
-        false
-    };
+    let record = StatusRecord::from_json(&state);
+    let present = record
+        .device
+        .as_deref()
+        .map(tunnel_interface_present)
+        .unwrap_or(false);
+    let live_ip = record.device.as_deref().and_then(tunnel_interface_ipv4);
 
-    if !process_running {
-        println!(
-            "{} {} - {}",
-            "●".bright_yellow(),
-            "akon-vpn".bright_white().bold(),
-            "Akon VPN Connection".bright_white()
-        );
-        println!(
-            "    {} {} ({})",
-            "Active:".bright_white(),
-            "inactive (stale)".bright_yellow().bold(),
-            "process no longer running".dimmed()
-        );
-        if let Some(ip) = state.get("ip") {
+    match evaluate_status(Some(&record), present, live_ip) {
+        StatusVerdict::NotConnected => {
+            print_status_header();
             println!(
-                "   {} {}",
-                "Last IP:".dimmed(),
-                ip.as_str().unwrap_or("unknown").bright_cyan()
+                "    {} {} ({})",
+                "Active:".bright_white(),
+                "inactive (dead)".bright_red(),
+                "not connected".dimmed()
             );
+            std::process::exit(1);
         }
-        println!();
-        println!(
-            "  {} Run {} to clean up stale state",
-            "[TIP]".bright_yellow(),
-            "akon vpn off".bright_cyan()
-        );
-        std::process::exit(2);
-    }
-
-    // Connected and running.
-    let connected_at_info = state
-        .get("connected_at")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse::<DateTime<Utc>>().ok());
-
-    let duration_str = connected_at_info.map(|connected_at| {
-        let now = Utc::now();
-        let duration = now.signed_duration_since(connected_at);
-        if duration.num_days() > 0 {
-            format!("{} days", duration.num_days())
-        } else if duration.num_hours() > 0 {
-            format!(
-                "{}h {}min",
-                duration.num_hours(),
-                duration.num_minutes() % 60
-            )
-        } else if duration.num_minutes() > 0 {
-            format!(
-                "{}min {}s",
-                duration.num_minutes(),
-                duration.num_seconds() % 60
-            )
-        } else {
-            format!("{}s", duration.num_seconds())
+        StatusVerdict::Stale { reason, ip } => {
+            print_status_header();
+            println!(
+                "    {} {} ({})",
+                "Active:".bright_white(),
+                "inactive (stale)".bright_yellow().bold(),
+                reason.dimmed()
+            );
+            if let Some(ip) = ip {
+                println!("   {} {}", "Last IP:".dimmed(), ip.bright_cyan());
+            }
+            println!();
+            println!(
+                "  {} Run {} to clean up stale state",
+                "[TIP]".bright_yellow(),
+                "akon vpn off".bright_cyan()
+            );
+            std::process::exit(2);
         }
-    });
+        StatusVerdict::Connected {
+            device,
+            ip,
+            connected_at,
+        } => {
+            let connected_at_info = connected_at.and_then(|s| s.parse::<DateTime<Utc>>().ok());
 
-    let active_since = connected_at_info
-        .map(|dt| dt.with_timezone(&chrono::Local))
-        .map(|dt| dt.format("%a %Y-%m-%d %H:%M:%S %Z").to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+            let duration_str = connected_at_info.map(|connected_at| {
+                let d = Utc::now().signed_duration_since(connected_at);
+                if d.num_days() > 0 {
+                    format!("{} days", d.num_days())
+                } else if d.num_hours() > 0 {
+                    format!("{}h {}min", d.num_hours(), d.num_minutes() % 60)
+                } else if d.num_minutes() > 0 {
+                    format!("{}min {}s", d.num_minutes(), d.num_seconds() % 60)
+                } else {
+                    format!("{}s", d.num_seconds())
+                }
+            });
+            let active_since = connected_at_info
+                .map(|dt| dt.with_timezone(&chrono::Local))
+                .map(|dt| dt.format("%a %Y-%m-%d %H:%M:%S %Z").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
 
-    println!(
-        "{} {} - {}",
-        "●".bright_green(),
-        "akon-vpn".bright_white().bold(),
-        "Akon VPN Connection".bright_white()
-    );
+            print_status_header();
+            if let Some(dur) = &duration_str {
+                println!(
+                    "    {} {} since {}; {} ago",
+                    "Active:".bright_white(),
+                    "active (running)".bright_green().bold(),
+                    active_since.bright_white(),
+                    dur.bright_magenta()
+                );
+            } else {
+                println!(
+                    "    {} {}",
+                    "Active:".bright_white(),
+                    "active (running)".bright_green().bold()
+                );
+            }
 
-    if let Some(dur) = &duration_str {
-        println!(
-            "    {} {} since {}; {} ago",
-            "Active:".bright_white(),
-            "active (running)".bright_green().bold(),
-            active_since.bright_white(),
-            dur.bright_magenta()
+            // The PID is advisory; note when the recorded owner is gone (the
+            // tunnel still exists, so the verdict remains Connected).
+            if let Some(pid_num) = record.pid {
+                let suffix = if pid_running(pid_num) {
+                    String::new()
+                } else {
+                    " (not running)".to_string()
+                };
+                println!(
+                    "  {} {} (akon native F5){}",
+                    "Main PID:".bright_white(),
+                    pid_num.to_string().bright_yellow(),
+                    suffix.dimmed()
+                );
+            }
+
+            if let Some(ip) = ip {
+                println!(
+                    "        {} {}",
+                    "IP:".bright_white(),
+                    ip.bright_cyan().bold()
+                );
+            }
+            println!("    {} {}", "Device:".bright_white(), device.bright_cyan());
+
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::{evaluate_status, StatusRecord, StatusVerdict};
+
+    fn record(device: Option<&str>, ip: Option<&str>, pid: Option<u64>) -> StatusRecord {
+        StatusRecord {
+            device: device.map(String::from),
+            ip: ip.map(String::from),
+            connected_at: Some("2026-01-01T00:00:00Z".into()),
+            pid,
+        }
+    }
+
+    #[test]
+    fn no_record_is_not_connected() {
+        assert_eq!(
+            evaluate_status(None, false, None),
+            StatusVerdict::NotConnected
         );
-    } else {
-        println!(
-            "    {} {}",
-            "Active:".bright_white(),
-            "active (running)".bright_green().bold()
+        // Even if some interface happens to be present, no record => not connected.
+        assert_eq!(
+            evaluate_status(None, true, Some("1.2.3.4".into())),
+            StatusVerdict::NotConnected
         );
     }
 
-    if let Some(pid_num) = pid {
-        println!(
-            "  {} {} (akon native F5)",
-            "Main PID:".bright_white(),
-            pid_num.to_string().bright_yellow()
+    #[test]
+    fn record_with_present_interface_is_connected_live_ip_preferred() {
+        let rec = record(Some("tun0"), Some("10.0.0.1"), Some(1234));
+        let v = evaluate_status(Some(&rec), true, Some("10.20.30.40".into()));
+        assert_eq!(
+            v,
+            StatusVerdict::Connected {
+                device: "tun0".into(),
+                ip: Some("10.20.30.40".into()), // live IP preferred over recorded
+                connected_at: Some("2026-01-01T00:00:00Z".into()),
+            }
         );
     }
 
-    if let Some(ip) = state.get("ip") {
-        println!(
-            "        {} {}",
-            "IP:".bright_white(),
-            ip.as_str().unwrap_or("unknown").bright_cyan().bold()
+    #[test]
+    fn record_with_present_interface_falls_back_to_recorded_ip() {
+        let rec = record(Some("tun0"), Some("10.0.0.1"), None);
+        let v = evaluate_status(Some(&rec), true, None);
+        match v {
+            StatusVerdict::Connected { ip, .. } => assert_eq!(ip, Some("10.0.0.1".into())),
+            other => panic!("expected Connected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn record_with_absent_interface_is_stale() {
+        let rec = record(Some("tun0"), Some("10.0.0.1"), Some(1234));
+        assert_eq!(
+            evaluate_status(Some(&rec), false, None),
+            StatusVerdict::Stale {
+                reason: "tunnel interface no longer present",
+                ip: Some("10.0.0.1".into()),
+            }
         );
     }
 
-    if let Some(device) = state.get("device") {
-        println!(
-            "    {} {}",
-            "Device:".bright_white(),
-            device.as_str().unwrap_or("unknown").bright_cyan()
+    #[test]
+    fn record_without_device_is_stale() {
+        let rec = record(None, Some("10.0.0.1"), Some(1234));
+        assert_eq!(
+            evaluate_status(Some(&rec), false, None),
+            StatusVerdict::Stale {
+                reason: "no tunnel device recorded",
+                ip: Some("10.0.0.1".into()),
+            }
         );
     }
 
-    Ok(())
+    // FR-005: the verdict must be independent of the PID.
+    #[test]
+    fn verdict_is_pid_independent() {
+        // Interface present + (any) pid => Connected.
+        let with_dead_pid = record(Some("tun0"), Some("10.0.0.1"), Some(999999));
+        assert!(matches!(
+            evaluate_status(Some(&with_dead_pid), true, None),
+            StatusVerdict::Connected { .. }
+        ));
+        // Interface absent + (any) pid => Stale.
+        let with_alive_pid = record(Some("tun0"), Some("10.0.0.1"), Some(1));
+        assert!(matches!(
+            evaluate_status(Some(&with_alive_pid), false, None),
+            StatusVerdict::Stale { .. }
+        ));
+    }
 }
