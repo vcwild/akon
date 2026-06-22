@@ -355,7 +355,10 @@ impl VpnBackend for NativeF5Backend {
 
     fn disconnect(&mut self) -> Result<(), BackendError> {
         // Signal the running session to stop pumping and tear down gracefully.
-        self.shutdown.notify_waiters();
+        // `notify_one` stores a permit if the pump is not currently parked on
+        // `notified()` (e.g. mid-loop or still starting up), so the shutdown is
+        // never lost — unlike `notify_waiters`, which only wakes current waiters.
+        self.shutdown.notify_one();
         // Reflect intent immediately for observers; the session task clears the
         // handle once teardown completes.
         self.shared.lock().expect("poisoned").alive = false;
@@ -805,18 +808,29 @@ async fn run_data_plane(
 
     // Run the pump until it exits, then always revert DNS. The exit reason tells
     // the caller whether WE requested the disconnect or the tunnel dropped.
-    let reason = pump_packets(transport, tun, shutdown).await;
+    let reason = pump_packets(transport, tun, shutdown, session.magic).await;
     let _ = dns.revert(&session.device);
     reason
 }
 
+/// How often we send a client-originated PPP keepalive (LCP Echo-Request / DPD).
+/// Must be comfortably below the F5 server's DPD tolerance (observed ~150 s);
+/// 20 s matches openconnect's keepalive range.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(20);
+
 /// The inner packet-forwarding loop (separated so DNS revert always runs on
 /// exit). Returns the reason the pump stopped: `UserRequested` if `disconnect`
 /// signalled shutdown, otherwise `ServerClosed` (transport/TUN ended).
+///
+/// Sends a periodic PPP keepalive (Echo-Request carrying `magic`) so the F5
+/// server's DPD does not expire and tear down the tunnel. The keepalive is
+/// skipped for any interval in which real outbound data was sent (data already
+/// refreshes the server's peer-liveness), mirroring openconnect.
 async fn pump_packets(
     transport: &mut dyn Transport,
     tun: &mut dyn TunDevice,
     shutdown: &Arc<Notify>,
+    magic: u32,
 ) -> crate::vpn::backend::DisconnectReason {
     use crate::vpn::backend::DisconnectReason;
     let mut tun_buf = vec![0u8; 4096];
@@ -824,9 +838,38 @@ async fn pump_packets(
     let debug = crate::vpn::f5::http::debug_enabled();
     let (mut out_pkts, mut in_pkts) = (0u64, 0u64);
 
+    // Keepalive state: a timer plus the out_pkts value at the last tick, so we
+    // can skip the keepalive when data is already flowing.
+    let mut keepalive = tokio::time::interval(KEEPALIVE_INTERVAL);
+    keepalive.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // Skip the immediate first tick (interval fires once right away).
+    keepalive.tick().await;
+    let mut out_pkts_at_last_ka = 0u64;
+    let mut ka_id: u8 = 0;
+
     loop {
         tokio::select! {
             _ = shutdown.notified() => return DisconnectReason::UserRequested,
+
+            // Periodic keepalive / DPD.
+            _ = keepalive.tick() => {
+                if out_pkts == out_pkts_at_last_ka {
+                    // No data sent since the last tick: send an explicit DPD.
+                    ka_id = ka_id.wrapping_add(1);
+                    let echo = crate::vpn::f5::ppp::lcp_echo_request(
+                        ka_id, magic, &magic.to_be_bytes(),
+                    );
+                    let wire = f5_encap(&crate::vpn::f5::ppp::build_ncp_frame(&echo));
+                    if debug {
+                        eprintln!("[f5-data] keepalive: sent LCP Echo-Request #{ka_id}");
+                    }
+                    if transport.send(&wire).await.is_err() {
+                        eprintln!("[f5-data] tunnel ended: keepalive send failed");
+                        return DisconnectReason::ServerClosed;
+                    }
+                }
+                out_pkts_at_last_ka = out_pkts;
+            }
 
             // OS -> tunnel
             r = tun.read_packet(&mut tun_buf) => {
@@ -1170,5 +1213,46 @@ mod tests {
         // LCP control frame -> not IP
         let lcp = [0xff, 0x03, 0xc0, 0x21, 0x01];
         assert_eq!(ppp_payload_if_ip(&lcp), None);
+    }
+
+    // The idle pump must emit a PPP keepalive (LCP Echo-Request) so the F5
+    // server's DPD does not expire and drop the tunnel. Uses paused tokio time
+    // to fast-forward the keepalive interval deterministically (no real wait).
+    #[cfg(feature = "test-actors")]
+    #[tokio::test(start_paused = true)]
+    async fn idle_pump_sends_keepalive_echo_request() {
+        use crate::vpn::f5::framing::f5_decap;
+        use crate::vpn::f5::ppp::{parse_ppp_frame, ECHOREQ, PPP_LCP};
+        use crate::vpn::testkit::transport::MemoryTransport;
+        use crate::vpn::transport::{NoopTun, Transport};
+
+        let (mut client, mut server) = MemoryTransport::pair();
+        let mut tun = NoopTun::default();
+        let shutdown = std::sync::Arc::new(Notify::new());
+        let magic = 0x0a0b0c0du32;
+
+        // Run the pump in the background (NoopTun never yields packets -> idle).
+        let pump =
+            tokio::spawn(
+                async move { pump_packets(&mut client, &mut tun, &shutdown, magic).await },
+            );
+
+        // Advance past one keepalive interval, then yield so the spawned pump
+        // task wakes on its timer and writes the keepalive into the in-memory
+        // channel. (Under paused time a real `timeout` would auto-advance and
+        // race the pump, so we drive scheduling explicitly instead.)
+        tokio::time::advance(KEEPALIVE_INTERVAL + Duration::from_secs(1)).await;
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
+        }
+
+        let mut buf = vec![0u8; 4096];
+        let n = server.recv(&mut buf).await.expect("recv ok");
+        let frames = f5_decap(&buf[..n]).expect("valid f5 frame");
+        let pkt = parse_ppp_frame(&frames[0]).expect("valid ppp frame");
+        assert_eq!(pkt.proto, PPP_LCP);
+        assert_eq!(pkt.code, ECHOREQ, "idle pump must send an LCP Echo-Request");
+
+        pump.abort();
     }
 }

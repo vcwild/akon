@@ -350,6 +350,21 @@ pub fn lcp_echo_reply(id: u8, magic: u32, data: &[u8]) -> NcpPacket {
     }
 }
 
+/// Build an LCP Echo-Request carrying our magic number (used as a client-side
+/// keepalive / DPD so the F5 server does not consider us dead and tear down the
+/// tunnel). The peer may answer with an Echo-Reply; we send these proactively to
+/// refresh the server's peer-liveness, mirroring openconnect's `KA_DPD`.
+pub fn lcp_echo_request(id: u8, magic: u32, data: &[u8]) -> NcpPacket {
+    let mut payload = magic.to_be_bytes().to_vec();
+    payload.extend_from_slice(data);
+    NcpPacket {
+        proto: PPP_LCP,
+        code: ECHOREQ,
+        id,
+        options: raw_payload_options(&payload),
+    }
+}
+
 /// Build an LCP Terminate-Request.
 pub fn lcp_terminate_request(id: u8) -> NcpPacket {
     NcpPacket {
@@ -1231,6 +1246,22 @@ mod tests {
         assert_eq!(body, expected);
         // No phase change from a DPD echo.
         assert_eq!(neg.phase(), PppPhase::EstablishLcp);
+    }
+
+    #[test]
+    fn lcp_echo_request_is_valid_dpd_frame_with_magic() {
+        let magic = 0x1234_5678u32;
+        let req = lcp_echo_request(7, magic, &magic.to_be_bytes());
+        let frame = build_ncp_frame(&req);
+        let parsed = parse_ppp_frame(&frame).unwrap();
+        assert_eq!(parsed.proto, PPP_LCP);
+        assert_eq!(parsed.code, ECHOREQ);
+        assert_eq!(parsed.id, 7);
+        // Body is magic || data; we put magic as the data too here.
+        let body = echo_data(&parsed);
+        let mut expected = magic.to_be_bytes().to_vec();
+        expected.extend_from_slice(&magic.to_be_bytes());
+        assert_eq!(body, expected);
     }
 
     #[test]
